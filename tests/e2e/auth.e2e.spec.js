@@ -69,6 +69,9 @@ test("happy-path login refresh logout", async ({ page }) => {
   await page.getByRole("button", { name: "List Comments" }).click();
   await expect(page.locator("#output")).toContainText("This comment was deleted");
 
+  await page.getByRole("button", { name: "Issue Activity" }).click();
+  await expect(page.locator("#output")).toContainText("status_changed");
+
   await page.getByRole("button", { name: "Create Cycle" }).click();
   await expect(page.locator("#output")).toContainText("\"status\": 201");
 

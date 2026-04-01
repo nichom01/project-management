@@ -317,6 +317,18 @@ document.getElementById("list-comments").addEventListener("click", async () => {
   write({ status: res.status, json: await res.json() });
 });
 
+document.getElementById("issue-activity").addEventListener("click", async () => {
+  if (!currentIssueId) {
+    write({ status: 400, json: { detail: "Create issue first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/issues/${currentIssueId}/activity`, {
+    method: "GET",
+    credentials: "include",
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
 document.getElementById("cycle-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!currentProjectId) {

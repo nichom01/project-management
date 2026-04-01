@@ -410,12 +410,20 @@ app.patch("/api/v1/issues/:issueId", requireAuth, authorize("edit_project"), (re
       }
       const fromValue = issue[field];
       issue[field] = req.body[field];
-      if (["priority", "estimate", "dueDate"].includes(field) && fromValue !== issue[field]) {
+      if (["status", "assigneeId", "priority", "estimate", "dueDate", "title"].includes(field) && fromValue !== issue[field]) {
+        const typeMap = {
+          status: "status_changed",
+          assigneeId: "assignee_changed",
+          priority: "priority_changed",
+          estimate: "estimate_changed",
+          dueDate: "dueDate_changed",
+          title: "title_changed",
+        };
         issueActivities.push({
           id: `activity-${issueActivities.length + 1}`,
           issueId: issue.id,
           actorId: req.userId,
-          type: `${field}_changed`,
+          type: typeMap[field],
           fromValue: fromValue == null ? null : String(fromValue),
           toValue: issue[field] == null ? null : String(issue[field]),
           createdAt: new Date().toISOString(),
@@ -512,7 +520,10 @@ app.post("/api/v1/issues/:issueId/transition", requireAuth, authorize("edit_proj
 });
 
 app.get("/api/v1/issues/:issueId/activity", requireAuth, (req, res) => {
-  return res.status(200).json(issueActivities.filter((item) => item.issueId === req.params.issueId));
+  const feed = issueActivities
+    .filter((item) => item.issueId === req.params.issueId)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  return res.status(200).json(feed);
 });
 
 app.get("/api/v1/issues/:issueId/comments", requireAuth, (req, res) => {
