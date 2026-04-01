@@ -2,6 +2,7 @@ const output = document.getElementById("output");
 const orgContext = document.getElementById("org-context");
 let currentOrgId = null;
 let currentTeamId = null;
+let currentProjectId = null;
 
 function write(data) {
   output.textContent = JSON.stringify(data, null, 2);
@@ -74,6 +75,50 @@ document.getElementById("remove-member").addEventListener("click", async () => {
     credentials: "include",
   });
   write({ status: res.status, json: { ok: res.ok } });
+});
+
+document.getElementById("project-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!currentTeamId) {
+    write({ status: 400, json: { detail: "Create team first" } });
+    return;
+  }
+  const name = document.getElementById("project-name").value;
+  const response = await post(`/api/v1/teams/${currentTeamId}/projects`, {
+    name,
+    status: "planning",
+    color: "#111827",
+  });
+  write(response);
+  if (response.status === 201) {
+    currentProjectId = response.json.id;
+  }
+});
+
+document.getElementById("update-project").addEventListener("click", async () => {
+  if (!currentProjectId) {
+    write({ status: 400, json: { detail: "Create project first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/projects/${currentProjectId}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      status: "active",
+      targetDate: "2026-05-01",
+      externalLinks: [{ label: "Spec", url: "https://example.com/spec" }],
+    }),
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
+document.getElementById("archive-project").addEventListener("click", async () => {
+  if (!currentProjectId) {
+    write({ status: 400, json: { detail: "Create project first" } });
+    return;
+  }
+  write(await post(`/api/v1/projects/${currentProjectId}/archive`));
 });
 
 document.getElementById("refresh").addEventListener("click", async () => {

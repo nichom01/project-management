@@ -52,6 +52,14 @@ const projects = Array.from({ length: 120 }, (_, i) => ({
   id: `project-${i + 1}`,
   teamId: "team-1",
   name: `Project ${i + 1}`,
+  status: "planning",
+  leadId: null,
+  startDate: null,
+  targetDate: null,
+  icon: null,
+  color: null,
+  externalLinks: [],
+  archivedAt: null,
 }));
 const organisations = [];
 const teams = [{ id: "team-1", orgId: "org-0", name: "Default Team", identifier: "ENG" }];
@@ -134,6 +142,44 @@ function authorize(action) {
   };
 }
 
+function findProjectById(projectId) {
+  return projects.find((project) => project.id === projectId);
+}
+
+function authorizeProject(action) {
+  return (req, res) => {
+    const project = findProjectById(req.params.projectId);
+    if (!project) {
+      return res.status(404).json(
+        createProblem({
+          type: "https://project-management/errors/not-found",
+          title: "Resource not found",
+          status: 404,
+          detail: "Project not found",
+          instance: req.path,
+        }),
+      );
+    }
+    const org = orgMemberships.get(req.userId) || { orgRole: "member" };
+    const team = teamMemberships.get(`${project.teamId}:${req.userId}`) || { teamRole: "guest" };
+    const result = assertAllowed(action, org.orgRole, team.teamRole);
+    if (!result.allowed) {
+      return res.status(403).json(
+        createProblem({
+          type: "https://project-management/errors/forbidden",
+          title: "Forbidden",
+          status: 403,
+          detail: `Role ${result.effectiveRole} cannot perform ${action}`,
+          instance: req.path,
+        }),
+      );
+    }
+    req.project = project;
+    req.effectiveRole = result.effectiveRole;
+    return null;
+  };
+}
+
 function slugify(name) {
   return String(name || "")
     .trim()
@@ -205,17 +251,71 @@ app.post("/api/v1/auth/logout", (req, res) => {
 });
 
 app.post("/api/v1/teams/:teamId/projects", requireAuth, authorize("create_project"), (req, res) => {
-  return res.status(201).json({
-    id: "project-1",
+  const project = {
+    id: `project-${projects.length + 1}`,
     teamId: req.params.teamId,
     name: (req.body && req.body.name) || "Untitled",
+    status: (req.body && req.body.status) || "planning",
+    leadId: (req.body && req.body.leadId) || null,
+    startDate: (req.body && req.body.startDate) || null,
+    targetDate: (req.body && req.body.targetDate) || null,
+    icon: (req.body && req.body.icon) || null,
+    color: (req.body && req.body.color) || null,
+    externalLinks: (req.body && req.body.externalLinks) || [],
+    archivedAt: null,
     createdBy: req.userId,
     roleUsed: req.effectiveRole,
-  });
+  };
+  projects.push(project);
+  return res.status(201).json(project);
+});
+
+app.patch("/api/v1/projects/:projectId", requireAuth, (req, res) => {
+  const blocked = authorizeProject("edit_project")(req, res);
+  if (blocked) {
+    return blocked;
+  }
+  const allowedFields = ["name", "status", "leadId", "startDate", "targetDate", "icon", "color", "externalLinks"];
+  for (const field of allowedFields) {
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, field)) {
+      req.project[field] = req.body[field];
+    }
+  }
+  return res.status(200).json(req.project);
+});
+
+app.post("/api/v1/projects/:projectId/archive", requireAuth, (req, res) => {
+  const blocked = authorizeProject("delete_project")(req, res);
+  if (blocked) {
+    return blocked;
+  }
+  req.project.archivedAt = new Date().toISOString();
+  req.project.status = "completed";
+  return res.status(200).json(req.project);
 });
 
 app.delete("/api/v1/teams/:teamId/projects/:projectId", requireAuth, authorize("delete_project"), (req, res) => {
+  const index = projects.findIndex((p) => p.id === req.params.projectId && p.teamId === req.params.teamId);
+  if (index >= 0) {
+    projects.splice(index, 1);
+  }
   return res.status(204).send();
+});
+
+app.get("/api/v1/projects/:projectId", requireAuth, (req, res) => {
+  const project = findProjectById(req.params.projectId);
+  if (!project) {
+    return res.status(404).json(
+      createProblem({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Project not found",
+        instance: req.path,
+      }),
+    );
+  }
+  return res.status(200).json(project);
 });
 
 app.get("/api/v1/teams/:teamId/projects", requireAuth, (req, res) => {
