@@ -79,6 +79,8 @@ const attachments = [];
 const storageService = createStorageService();
 const notifications = [];
 const notificationPreferences = [];
+const emailQueue = [];
+const emailOutbox = [];
 
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
@@ -186,6 +188,46 @@ function createNotification({ recipientId, actorId, type, issueId = null }) {
     readAt: null,
     createdAt: new Date().toISOString(),
   });
+  const emailPref = notificationPreferences.find(
+    (pref) => pref.userId === recipientId && pref.eventType === type && pref.channel === "email",
+  );
+  if (!emailPref || emailPref.enabled !== false) {
+    emailQueue.push({
+      id: `email-${emailQueue.length + 1}`,
+      recipientId,
+      type,
+      issueId,
+      attempts: 0,
+      status: "queued",
+      lastError: null,
+      template: `email-template:${type}`,
+      createdAt: new Date().toISOString(),
+    });
+  }
+}
+
+function processEmailQueue() {
+  for (const item of emailQueue) {
+    if (item.status === "sent") {
+      continue;
+    }
+    item.attempts += 1;
+    // Simulate a transient provider failure for first attempt.
+    if (item.attempts === 1) {
+      item.status = "retrying";
+      item.lastError = "Transient provider timeout";
+      continue;
+    }
+    item.status = "sent";
+    item.lastError = null;
+    emailOutbox.push({
+      id: `outbox-${emailOutbox.length + 1}`,
+      recipientId: item.recipientId,
+      type: item.type,
+      template: item.template,
+      sentAt: new Date().toISOString(),
+    });
+  }
 }
 
 function authorizeProject(action) {
@@ -638,6 +680,19 @@ app.post("/api/v1/notifications/read-all", requireAuth, (req, res) => {
     }
   });
   return res.status(200).json({ ok: true });
+});
+
+app.post("/api/v1/dev/email-queue/process", requireAuth, (req, res) => {
+  processEmailQueue();
+  return res.status(200).json({
+    queued: emailQueue.length,
+    sent: emailQueue.filter((item) => item.status === "sent").length,
+    retrying: emailQueue.filter((item) => item.status === "retrying").length,
+  });
+});
+
+app.get("/api/v1/dev/email-outbox", requireAuth, (req, res) => {
+  return res.status(200).json(emailOutbox);
 });
 
 app.get("/api/v1/users/me/notification-preferences", requireAuth, (req, res) => {
