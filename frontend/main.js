@@ -64,6 +64,22 @@ document.getElementById("member-form").addEventListener("submit", async (event) 
   write(await post(`/api/v1/teams/${currentTeamId}/members`, { userId, role }));
 });
 
+document.getElementById("team-settings-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!currentTeamId) {
+    write({ status: 400, json: { detail: "Create team first" } });
+    return;
+  }
+  const identifier = document.getElementById("team-settings-identifier").value;
+  const res = await fetch(`/api/v1/teams/${currentTeamId}/settings`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier }),
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
 document.getElementById("remove-member").addEventListener("click", async () => {
   if (!currentTeamId) {
     write({ status: 400, json: { detail: "Create team first" } });

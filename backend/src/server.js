@@ -382,7 +382,20 @@ app.post("/api/v1/organisations/:orgId/teams", requireAuth, (req, res) => {
   }
 
   const name = (req.body && req.body.name) || "New Team";
-  const identifier = (req.body && req.body.identifier) || `TEAM${teams.length + 1}`;
+  const identifier = ((req.body && req.body.identifier) || `TEAM${teams.length + 1}`).toUpperCase();
+  const identifierValid = /^[A-Z][A-Z0-9_-]{1,9}$/.test(identifier);
+  const identifierInUse = teams.some((team) => team.identifier === identifier);
+  if (!identifierValid || identifierInUse) {
+    return res.status(400).json(
+      createProblem({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "Identifier must be unique and match ^[A-Z][A-Z0-9_-]{1,9}$",
+        instance: req.path,
+      }),
+    );
+  }
   const team = {
     id: `team-${teams.length + 1}`,
     orgId: req.params.orgId,
@@ -391,7 +404,54 @@ app.post("/api/v1/organisations/:orgId/teams", requireAuth, (req, res) => {
   };
   teams.push(team);
   teamMemberships.set(`${team.id}:${req.userId}`, { teamRole: "owner" });
+  const defaults = [
+    { name: "Backlog", type: "backlog", color: "#6b7280" },
+    { name: "Todo", type: "unstarted", color: "#0284c7" },
+    { name: "In Progress", type: "started", color: "#2563eb" },
+    { name: "Done", type: "completed", color: "#16a34a" },
+  ];
+  defaults.forEach((item, index) => {
+    workflowStates.push({
+      id: `state-${workflowStates.length + 1}`,
+      teamId: team.id,
+      name: item.name,
+      type: item.type,
+      color: item.color,
+      position: index + 1,
+    });
+  });
   return res.status(201).json(team);
+});
+
+app.patch("/api/v1/teams/:teamId/settings", requireAuth, authorize("manage_team_members"), (req, res, next) => {
+  const team = teams.find((item) => item.id === req.params.teamId);
+  if (!team) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Team not found",
+      }),
+    );
+  }
+  if (req.body && Object.prototype.hasOwnProperty.call(req.body, "identifier")) {
+    const candidate = String(req.body.identifier || "").toUpperCase();
+    const identifierValid = /^[A-Z][A-Z0-9_-]{1,9}$/.test(candidate);
+    const identifierInUse = teams.some((item) => item.id !== team.id && item.identifier === candidate);
+    if (!identifierValid || identifierInUse) {
+      return next(
+        appError({
+          type: "https://project-management/errors/validation",
+          title: "Validation failed",
+          status: 400,
+          detail: "Identifier must be unique and match ^[A-Z][A-Z0-9_-]{1,9}$",
+        }),
+      );
+    }
+    team.identifier = candidate;
+  }
+  return res.status(200).json(team);
 });
 
 app.post("/api/v1/teams/:teamId/members", requireAuth, authorize("manage_team_members"), (req, res, next) => {
