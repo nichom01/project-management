@@ -323,11 +323,35 @@ app.post("/api/v1/projects/:projectId/issues", requireAuth, authorize("edit_proj
     estimate: (req.body && req.body.estimate) || null,
     dueDate: (req.body && req.body.dueDate) || null,
     status: (req.body && req.body.status) || "backlog",
+    parentId: (req.body && req.body.parentId) || null,
     cycleId: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     deletedAt: null,
   };
+  if (issue.parentId) {
+    const parent = findIssueById(issue.parentId);
+    if (!parent) {
+      return next(
+        appError({
+          type: "https://project-management/errors/validation",
+          title: "Validation failed",
+          status: 400,
+          detail: "parentId must reference an existing issue",
+        }),
+      );
+    }
+    if (parent.parentId) {
+      return next(
+        appError({
+          type: "https://project-management/errors/validation",
+          title: "Validation failed",
+          status: 400,
+          detail: "Nested sub-issues are not allowed",
+        }),
+      );
+    }
+  }
   issues.push(issue);
   return res.status(201).json(issue);
 });
@@ -414,7 +438,8 @@ app.get("/api/v1/issues/:issueId", requireAuth, (req, res, next) => {
       }),
     );
   }
-  return res.status(200).json(issue);
+  const children = issues.filter((item) => item.parentId === issue.id && !item.deletedAt);
+  return res.status(200).json({ ...issue, subIssues: children });
 });
 
 app.get("/api/v1/projects/:projectId/issues", requireAuth, (req, res, next) => {

@@ -197,6 +197,20 @@ document.getElementById("load-issue-detail").addEventListener("click", async () 
   write({ status: res.status, json: await res.json() });
 });
 
+document.getElementById("create-sub-issue").addEventListener("click", async () => {
+  if (!currentProjectId || !currentIssueId) {
+    write({ status: 400, json: { detail: "Create parent issue first" } });
+    return;
+  }
+  write(
+    await post(`/api/v1/projects/${currentProjectId}/issues`, {
+      title: "Child task",
+      parentId: currentIssueId,
+      status: "backlog",
+    }),
+  );
+});
+
 document.getElementById("delete-issue").addEventListener("click", async () => {
   if (!currentIssueId) {
     write({ status: 400, json: { detail: "Create issue first" } });
