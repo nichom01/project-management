@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const express = require("express");
 const cookieParser = require("cookie-parser");
+const { assertAllowed } = require("./permission-service");
 
 const app = express();
 app.use(express.json());
@@ -9,6 +10,7 @@ app.use(express.static("frontend"));
 
 const accessCookieName = "pm_access";
 const refreshCookieName = "pm_refresh";
+const accessSessions = new Map();
 const refreshSessions = new Map();
 
 const users = [
@@ -18,7 +20,31 @@ const users = [
     password: "password123",
     name: "Admin User",
   },
+  {
+    id: "u-2",
+    email: "member@example.com",
+    password: "password123",
+    name: "Team Member",
+  },
+  {
+    id: "u-3",
+    email: "guest@example.com",
+    password: "password123",
+    name: "Team Guest",
+  },
 ];
+
+const orgMemberships = new Map([
+  ["u-1", { orgRole: "admin" }],
+  ["u-2", { orgRole: "member" }],
+  ["u-3", { orgRole: "member" }],
+]);
+
+const teamMemberships = new Map([
+  ["team-1:u-1", { teamRole: "owner" }],
+  ["team-1:u-2", { teamRole: "member" }],
+  ["team-1:u-3", { teamRole: "guest" }],
+]);
 
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
@@ -39,6 +65,11 @@ function setSessionCookies(res, userId) {
   const refreshToken = randomToken();
   const now = Date.now();
 
+  accessSessions.set(accessToken, {
+    userId,
+    expiresAt: now + 15 * 60 * 1000,
+  });
+
   refreshSessions.set(refreshToken, {
     userId,
     expiresAt: now + 7 * 24 * 60 * 60 * 1000,
@@ -51,6 +82,42 @@ function setSessionCookies(res, userId) {
 function clearSessionCookies(res) {
   res.clearCookie(accessCookieName, { path: "/" });
   res.clearCookie(refreshCookieName, { path: "/" });
+}
+
+function requireAuth(req, res, next) {
+  const accessToken = req.cookies[accessCookieName];
+  const session = accessSessions.get(accessToken);
+  if (!accessToken || !session || session.expiresAt <= Date.now()) {
+    return res.status(401).json({
+      type: "https://project-management/errors/auth-required",
+      title: "Authentication required",
+      status: 401,
+      detail: "Login required for this action",
+      instance: req.path,
+    });
+  }
+  req.userId = session.userId;
+  return next();
+}
+
+function authorize(action) {
+  return (req, res, next) => {
+    const org = orgMemberships.get(req.userId) || { orgRole: "member" };
+    const key = `${req.params.teamId || "team-1"}:${req.userId}`;
+    const team = teamMemberships.get(key) || { teamRole: "guest" };
+    const result = assertAllowed(action, org.orgRole, team.teamRole);
+    if (!result.allowed) {
+      return res.status(403).json({
+        type: "https://project-management/errors/forbidden",
+        title: "Forbidden",
+        status: 403,
+        detail: `Role ${result.effectiveRole} cannot perform ${action}`,
+        instance: req.path,
+      });
+    }
+    req.effectiveRole = result.effectiveRole;
+    return next();
+  };
 }
 
 app.post("/api/v1/auth/login", (req, res) => {
@@ -90,17 +157,39 @@ app.post("/api/v1/auth/refresh", (req, res) => {
   }
 
   refreshSessions.delete(refreshToken);
+  const oldAccessToken = req.cookies[accessCookieName];
+  if (oldAccessToken) {
+    accessSessions.delete(oldAccessToken);
+  }
   setSessionCookies(res, existing.userId);
   return res.status(200).json({ ok: true });
 });
 
 app.post("/api/v1/auth/logout", (req, res) => {
   const refreshToken = req.cookies[refreshCookieName];
+  const accessToken = req.cookies[accessCookieName];
   if (refreshToken) {
     refreshSessions.delete(refreshToken);
   }
+  if (accessToken) {
+    accessSessions.delete(accessToken);
+  }
   clearSessionCookies(res);
   return res.status(200).json({ ok: true });
+});
+
+app.post("/api/v1/teams/:teamId/projects", requireAuth, authorize("create_project"), (req, res) => {
+  return res.status(201).json({
+    id: "project-1",
+    teamId: req.params.teamId,
+    name: (req.body && req.body.name) || "Untitled",
+    createdBy: req.userId,
+    roleUsed: req.effectiveRole,
+  });
+});
+
+app.delete("/api/v1/teams/:teamId/projects/:projectId", requireAuth, authorize("delete_project"), (req, res) => {
+  return res.status(204).send();
 });
 
 module.exports = { app };
