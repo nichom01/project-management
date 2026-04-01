@@ -321,6 +321,7 @@ app.post("/api/v1/projects/:projectId/issues", requireAuth, authorize("edit_proj
     reporterId: req.userId,
     priority: (req.body && req.body.priority) || "none",
     status: (req.body && req.body.status) || "backlog",
+    cycleId: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -435,6 +436,78 @@ app.post("/api/v1/issues/:issueId/transition", requireAuth, authorize("edit_proj
 
 app.get("/api/v1/issues/:issueId/activity", requireAuth, (req, res) => {
   return res.status(200).json(issueActivities.filter((item) => item.issueId === req.params.issueId));
+});
+
+app.post("/api/v1/cycles/:cycleId/issues/:issueId", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const cycle = findCycleById(req.params.cycleId);
+  const issue = findIssueById(req.params.issueId);
+  if (!cycle || !issue) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Cycle or issue not found",
+      }),
+    );
+  }
+  if (cycle.status !== "active") {
+    return next(
+      appError({
+        type: "https://project-management/errors/conflict",
+        title: "Conflict",
+        status: 409,
+        detail: "Issue assignment requires an active cycle",
+      }),
+    );
+  }
+  issue.cycleId = cycle.id;
+  issue.updatedAt = new Date().toISOString();
+  return res.status(200).json(issue);
+});
+
+app.delete("/api/v1/cycles/:cycleId/issues/:issueId", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const cycle = findCycleById(req.params.cycleId);
+  const issue = findIssueById(req.params.issueId);
+  if (!cycle || !issue) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Cycle or issue not found",
+      }),
+    );
+  }
+  if (issue.cycleId === cycle.id) {
+    issue.cycleId = null;
+    issue.updatedAt = new Date().toISOString();
+  }
+  return res.status(204).send();
+});
+
+app.get("/api/v1/cycles/:cycleId/progress", requireAuth, (req, res, next) => {
+  const cycle = findCycleById(req.params.cycleId);
+  if (!cycle) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Cycle not found",
+      }),
+    );
+  }
+  const scopedIssues = issues.filter((issue) => issue.cycleId === cycle.id);
+  const total = scopedIssues.length;
+  const completed = scopedIssues.filter((issue) => issue.status === "completed").length;
+  return res.status(200).json({
+    cycleId: cycle.id,
+    totalIssues: total,
+    completedIssues: completed,
+    completionRate: total === 0 ? 0 : Number((completed / total).toFixed(2)),
+    issues: scopedIssues,
+  });
 });
 
 app.post("/api/v1/projects/:projectId/cycles", requireAuth, authorize("edit_project"), (req, res, next) => {

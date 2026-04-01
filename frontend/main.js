@@ -257,6 +257,44 @@ document.getElementById("complete-cycle").addEventListener("click", async () => 
   write(await post(`/api/v1/cycles/${currentCycleId}/complete`));
 });
 
+document.getElementById("assign-issue-cycle").addEventListener("click", async () => {
+  if (!currentCycleId || !currentIssueId) {
+    write({ status: 400, json: { detail: "Create issue and cycle first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/cycles/${currentCycleId}/issues/${currentIssueId}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
+document.getElementById("unassign-issue-cycle").addEventListener("click", async () => {
+  if (!currentCycleId || !currentIssueId) {
+    write({ status: 400, json: { detail: "Create issue and cycle first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/cycles/${currentCycleId}/issues/${currentIssueId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  write({ status: res.status, json: { ok: res.ok } });
+});
+
+document.getElementById("cycle-progress").addEventListener("click", async () => {
+  if (!currentCycleId) {
+    write({ status: 400, json: { detail: "Create cycle first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/cycles/${currentCycleId}/progress`, {
+    method: "GET",
+    credentials: "include",
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
 document.getElementById("label-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!currentTeamId) {

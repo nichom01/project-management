@@ -54,6 +54,15 @@ test("happy-path login refresh logout", async ({ page }) => {
   await page.getByRole("button", { name: "Start Cycle" }).click();
   await expect(page.locator("#output")).toContainText("\"status\": 200");
 
+  await page.getByRole("button", { name: "Assign Issue To Cycle" }).click();
+  await expect(page.locator("#output")).toContainText("\"status\": 200");
+
+  await page.getByRole("button", { name: "Cycle Progress" }).click();
+  await expect(page.locator("#output")).toContainText("\"status\": 200");
+
+  await page.getByRole("button", { name: "Unassign Issue From Cycle" }).click();
+  await expect(page.locator("#output")).toContainText("\"status\": 204");
+
   await page.getByRole("button", { name: "Complete Cycle" }).click();
   await expect(page.locator("#output")).toContainText("\"status\": 200");
 
