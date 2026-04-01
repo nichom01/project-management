@@ -324,6 +324,7 @@ app.post("/api/v1/projects/:projectId/issues", requireAuth, authorize("edit_proj
     cycleId: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    deletedAt: null,
   };
   issues.push(issue);
   return res.status(201).json(issue);
@@ -353,7 +354,7 @@ app.patch("/api/v1/issues/:issueId", requireAuth, authorize("edit_project"), (re
 
 app.get("/api/v1/issues/:issueId", requireAuth, (req, res, next) => {
   const issue = findIssueById(req.params.issueId);
-  if (!issue) {
+  if (!issue || (issue.deletedAt && req.query.includeDeleted !== "true")) {
     return next(
       appError({
         type: "https://project-management/errors/not-found",
@@ -379,7 +380,7 @@ app.get("/api/v1/projects/:projectId/issues", requireAuth, (req, res, next) => {
     );
   }
   const view = String(req.query.view || "table");
-  let projectIssues = issues.filter((issue) => issue.projectId === project.id);
+  let projectIssues = issues.filter((issue) => issue.projectId === project.id && !issue.deletedAt);
   const status = String(req.query.status || "").trim().toLowerCase();
   if (status) {
     projectIssues = projectIssues.filter((issue) => String(issue.status || "").toLowerCase() === status);
@@ -498,7 +499,7 @@ app.get("/api/v1/cycles/:cycleId/progress", requireAuth, (req, res, next) => {
       }),
     );
   }
-  const scopedIssues = issues.filter((issue) => issue.cycleId === cycle.id);
+  const scopedIssues = issues.filter((issue) => issue.cycleId === cycle.id && !issue.deletedAt);
   const total = scopedIssues.length;
   const completed = scopedIssues.filter((issue) => issue.status === "completed").length;
   return res.status(200).json({
@@ -653,8 +654,8 @@ app.post("/api/v1/cycles/:cycleId/complete", requireAuth, authorize("edit_projec
 });
 
 app.delete("/api/v1/issues/:issueId", requireAuth, authorize("delete_project"), (req, res, next) => {
-  const index = issues.findIndex((item) => item.id === req.params.issueId);
-  if (index < 0) {
+  const issue = findIssueById(req.params.issueId);
+  if (!issue) {
     return next(
       appError({
         type: "https://project-management/errors/not-found",
@@ -664,8 +665,26 @@ app.delete("/api/v1/issues/:issueId", requireAuth, authorize("delete_project"), 
       }),
     );
   }
-  issues.splice(index, 1);
+  issue.deletedAt = new Date().toISOString();
+  issue.updatedAt = new Date().toISOString();
   return res.status(204).send();
+});
+
+app.post("/api/v1/issues/:issueId/restore", requireAuth, authorize("delete_project"), (req, res, next) => {
+  const issue = findIssueById(req.params.issueId);
+  if (!issue) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Issue not found",
+      }),
+    );
+  }
+  issue.deletedAt = null;
+  issue.updatedAt = new Date().toISOString();
+  return res.status(200).json(issue);
 });
 
 app.patch("/api/v1/projects/:projectId", requireAuth, (req, res) => {

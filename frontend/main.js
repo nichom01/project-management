@@ -190,6 +190,26 @@ document.getElementById("load-issue-detail").addEventListener("click", async () 
   write({ status: res.status, json: await res.json() });
 });
 
+document.getElementById("delete-issue").addEventListener("click", async () => {
+  if (!currentIssueId) {
+    write({ status: 400, json: { detail: "Create issue first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/issues/${currentIssueId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  write({ status: res.status, json: { ok: res.ok } });
+});
+
+document.getElementById("restore-issue").addEventListener("click", async () => {
+  if (!currentIssueId) {
+    write({ status: 400, json: { detail: "Create issue first" } });
+    return;
+  }
+  write(await post(`/api/v1/issues/${currentIssueId}/restore`));
+});
+
 document.getElementById("list-issues-table").addEventListener("click", async () => {
   if (!currentProjectId) {
     write({ status: 400, json: { detail: "Create project first" } });
