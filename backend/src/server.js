@@ -320,6 +320,8 @@ app.post("/api/v1/projects/:projectId/issues", requireAuth, authorize("edit_proj
     assigneeId: (req.body && req.body.assigneeId) || null,
     reporterId: req.userId,
     priority: (req.body && req.body.priority) || "none",
+    estimate: (req.body && req.body.estimate) || null,
+    dueDate: (req.body && req.body.dueDate) || null,
     status: (req.body && req.body.status) || "backlog",
     cycleId: null,
     createdAt: new Date().toISOString(),
@@ -342,10 +344,58 @@ app.patch("/api/v1/issues/:issueId", requireAuth, authorize("edit_project"), (re
       }),
     );
   }
-  const fields = ["title", "description", "assigneeId", "priority", "status"];
+  const fields = ["title", "description", "assigneeId", "priority", "status", "estimate", "dueDate"];
   for (const field of fields) {
     if (req.body && Object.prototype.hasOwnProperty.call(req.body, field)) {
+      if (field === "priority" && !["urgent", "high", "medium", "low", "none"].includes(req.body[field])) {
+        return next(
+          appError({
+            type: "https://project-management/errors/validation",
+            title: "Validation failed",
+            status: 400,
+            detail: "Invalid priority",
+          }),
+        );
+      }
+      if (field === "estimate" && req.body[field] !== null) {
+        const estimate = Number(req.body[field]);
+        if (!Number.isInteger(estimate) || estimate < 0) {
+          return next(
+            appError({
+              type: "https://project-management/errors/validation",
+              title: "Validation failed",
+              status: 400,
+              detail: "Estimate must be a non-negative integer",
+            }),
+          );
+        }
+      }
+      if (field === "dueDate" && req.body[field] !== null) {
+        const dueDateValue = String(req.body[field]);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDateValue)) {
+          return next(
+            appError({
+              type: "https://project-management/errors/validation",
+              title: "Validation failed",
+              status: 400,
+              detail: "dueDate must be YYYY-MM-DD",
+            }),
+          );
+        }
+      }
+      const fromValue = issue[field];
       issue[field] = req.body[field];
+      if (["priority", "estimate", "dueDate"].includes(field) && fromValue !== issue[field]) {
+        issueActivities.push({
+          id: `activity-${issueActivities.length + 1}`,
+          issueId: issue.id,
+          actorId: req.userId,
+          type: `${field}_changed`,
+          fromValue: fromValue == null ? null : String(fromValue),
+          toValue: issue[field] == null ? null : String(issue[field]),
+          createdAt: new Date().toISOString(),
+        });
+      }
     }
   }
   issue.updatedAt = new Date().toISOString();

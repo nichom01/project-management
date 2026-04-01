@@ -147,11 +147,16 @@ document.getElementById("issue-form").addEventListener("submit", async (event) =
     return;
   }
   const title = document.getElementById("issue-title").value;
+  const estimate = Number(document.getElementById("issue-estimate").value);
+  const dueDate = document.getElementById("issue-due-date").value;
+  const priority = document.getElementById("issue-priority").value;
   const response = await post(`/api/v1/projects/${currentProjectId}/issues`, {
     title,
     description: "Created from UI flow",
     assigneeId: "u-2",
-    priority: "high",
+    priority,
+    estimate,
+    dueDate,
     status: "backlog",
   });
   write(response);
@@ -173,6 +178,8 @@ document.getElementById("update-issue").addEventListener("click", async () => {
       title: "Fix login bug now",
       status: "started",
       priority: "urgent",
+      estimate: 5,
+      dueDate: "2026-05-05",
     }),
   });
   write({ status: res.status, json: await res.json() });
