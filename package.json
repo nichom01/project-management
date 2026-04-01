@@ -1,0 +1,37 @@
+{
+  "name": "project-management",
+  "version": "1.0.0",
+  "description": "Bootstrap repository for the project-management system.",
+  "main": "backend/src/index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "start": "node backend/src/index.js",
+    "test": "npm run test:integration",
+    "test:integration": "node --test tests/integration/**/*.test.js",
+    "test:e2e": "playwright test tests/e2e/auth.e2e.spec.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nichom01/project-management.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/nichom01/project-management/issues"
+  },
+  "homepage": "https://github.com/nichom01/project-management#readme",
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.0",
+    "playwright": "^1.59.0",
+    "supertest": "^7.2.2"
+  }
+}
