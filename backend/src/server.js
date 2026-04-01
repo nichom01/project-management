@@ -11,6 +11,18 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(express.static("frontend"));
 
+const metrics = {
+  requestsTotal: 0,
+  requestsByPath: {},
+  errorsTotal: 0,
+};
+
+app.use((req, res, next) => {
+  metrics.requestsTotal += 1;
+  metrics.requestsByPath[req.path] = (metrics.requestsByPath[req.path] || 0) + 1;
+  next();
+});
+
 const accessCookieName = "pm_access";
 const refreshCookieName = "pm_refresh";
 const accessSessions = new Map();
@@ -414,6 +426,18 @@ app.post("/api/v1/auth/logout", (req, res) => {
   }
   clearSessionCookies(res);
   return res.status(200).json({ ok: true });
+});
+
+app.get("/api/v1/health", (req, res) => {
+  return res.status(200).json({
+    status: "ok",
+    uptimeSeconds: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get("/api/v1/metrics", requireAuth, (req, res) => {
+  return res.status(200).json(metrics);
 });
 
 app.post("/api/v1/teams/:teamId/projects", requireAuth, authorize("create_project"), (req, res) => {
@@ -1503,6 +1527,10 @@ app.post("/api/v1/teams/:teamId/workflow-states/reorder", requireAuth, authorize
   );
 });
 
+app.use((err, req, res, next) => {
+  metrics.errorsTotal += 1;
+  return next(err);
+});
 app.use(problemDetailsMiddleware);
 
 module.exports = { app };
