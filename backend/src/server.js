@@ -70,6 +70,7 @@ const workflowStates = [
   { id: "state-3", teamId: "team-1", name: "Done", type: "completed", position: 3, color: "#16a34a" },
 ];
 const workflowSemanticTypes = new Set(["backlog", "unstarted", "started", "completed", "cancelled"]);
+const issues = [];
 
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
@@ -151,6 +152,10 @@ function authorize(action) {
 
 function findProjectById(projectId) {
   return projects.find((project) => project.id === projectId);
+}
+
+function findIssueById(issueId) {
+  return issues.find((issue) => issue.id === issueId);
 }
 
 function authorizeProject(action) {
@@ -275,6 +280,99 @@ app.post("/api/v1/teams/:teamId/projects", requireAuth, authorize("create_projec
   };
   projects.push(project);
   return res.status(201).json(project);
+});
+
+app.post("/api/v1/projects/:projectId/issues", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const project = findProjectById(req.params.projectId);
+  if (!project) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Project not found",
+      }),
+    );
+  }
+  const title = (req.body && req.body.title) || "";
+  if (!title.trim()) {
+    return next(
+      appError({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "Issue title is required",
+      }),
+    );
+  }
+  const issue = {
+    id: `issue-${issues.length + 1}`,
+    projectId: project.id,
+    teamId: project.teamId,
+    title: title.trim(),
+    description: (req.body && req.body.description) || "",
+    assigneeId: (req.body && req.body.assigneeId) || null,
+    reporterId: req.userId,
+    priority: (req.body && req.body.priority) || "none",
+    status: (req.body && req.body.status) || "backlog",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  issues.push(issue);
+  return res.status(201).json(issue);
+});
+
+app.patch("/api/v1/issues/:issueId", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const issue = findIssueById(req.params.issueId);
+  if (!issue) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Issue not found",
+      }),
+    );
+  }
+  const fields = ["title", "description", "assigneeId", "priority", "status"];
+  for (const field of fields) {
+    if (req.body && Object.prototype.hasOwnProperty.call(req.body, field)) {
+      issue[field] = req.body[field];
+    }
+  }
+  issue.updatedAt = new Date().toISOString();
+  return res.status(200).json(issue);
+});
+
+app.get("/api/v1/issues/:issueId", requireAuth, (req, res, next) => {
+  const issue = findIssueById(req.params.issueId);
+  if (!issue) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Issue not found",
+      }),
+    );
+  }
+  return res.status(200).json(issue);
+});
+
+app.delete("/api/v1/issues/:issueId", requireAuth, authorize("delete_project"), (req, res, next) => {
+  const index = issues.findIndex((item) => item.id === req.params.issueId);
+  if (index < 0) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Issue not found",
+      }),
+    );
+  }
+  issues.splice(index, 1);
+  return res.status(204).send();
 });
 
 app.patch("/api/v1/projects/:projectId", requireAuth, (req, res) => {

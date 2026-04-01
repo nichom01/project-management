@@ -3,6 +3,7 @@ const orgContext = document.getElementById("org-context");
 let currentOrgId = null;
 let currentTeamId = null;
 let currentProjectId = null;
+let currentIssueId = null;
 
 function write(data) {
   output.textContent = JSON.stringify(data, null, 2);
@@ -132,6 +133,56 @@ document.getElementById("load-project-detail").addEventListener("click", async (
     return;
   }
   const res = await fetch(`/api/v1/projects/${currentProjectId}?teamId=${encodeURIComponent(currentTeamId)}`, {
+    method: "GET",
+    credentials: "include",
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
+document.getElementById("issue-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!currentProjectId) {
+    write({ status: 400, json: { detail: "Create project first" } });
+    return;
+  }
+  const title = document.getElementById("issue-title").value;
+  const response = await post(`/api/v1/projects/${currentProjectId}/issues`, {
+    title,
+    description: "Created from UI flow",
+    assigneeId: "u-2",
+    priority: "high",
+    status: "backlog",
+  });
+  write(response);
+  if (response.status === 201) {
+    currentIssueId = response.json.id;
+  }
+});
+
+document.getElementById("update-issue").addEventListener("click", async () => {
+  if (!currentIssueId) {
+    write({ status: 400, json: { detail: "Create issue first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/issues/${currentIssueId}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: "Fix login bug now",
+      status: "started",
+      priority: "urgent",
+    }),
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
+document.getElementById("load-issue-detail").addEventListener("click", async () => {
+  if (!currentIssueId) {
+    write({ status: 400, json: { detail: "Create issue first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/issues/${currentIssueId}`, {
     method: "GET",
     credentials: "include",
   });
