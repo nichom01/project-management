@@ -5,6 +5,7 @@ let currentTeamId = null;
 let currentProjectId = null;
 let currentIssueId = null;
 let currentCycleId = null;
+let currentCommentId = null;
 
 function write(data) {
   output.textContent = JSON.stringify(data, null, 2);
@@ -262,6 +263,58 @@ document.getElementById("transition-issue").addEventListener("click", async () =
   }
   const response = await post(`/api/v1/issues/${currentIssueId}/transition`, { toStatus: "completed" });
   write(response);
+});
+
+document.getElementById("add-comment").addEventListener("click", async () => {
+  if (!currentIssueId) {
+    write({ status: 400, json: { detail: "Create issue first" } });
+    return;
+  }
+  const response = await post(`/api/v1/issues/${currentIssueId}/comments`, {
+    body: "Initial comment",
+  });
+  write(response);
+  if (response.status === 201) {
+    currentCommentId = response.json.id;
+  }
+});
+
+document.getElementById("edit-comment").addEventListener("click", async () => {
+  if (!currentCommentId) {
+    write({ status: 400, json: { detail: "Add comment first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/comments/${currentCommentId}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body: "Edited comment body" }),
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
+document.getElementById("delete-comment").addEventListener("click", async () => {
+  if (!currentCommentId) {
+    write({ status: 400, json: { detail: "Add comment first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/comments/${currentCommentId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  write({ status: res.status, json: { ok: res.ok } });
+});
+
+document.getElementById("list-comments").addEventListener("click", async () => {
+  if (!currentIssueId) {
+    write({ status: 400, json: { detail: "Create issue first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/issues/${currentIssueId}/comments`, {
+    method: "GET",
+    credentials: "include",
+  });
+  write({ status: res.status, json: await res.json() });
 });
 
 document.getElementById("cycle-form").addEventListener("submit", async (event) => {

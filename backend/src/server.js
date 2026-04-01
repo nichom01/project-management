@@ -73,6 +73,7 @@ const workflowSemanticTypes = new Set(["backlog", "unstarted", "started", "compl
 const issues = [];
 const issueActivities = [];
 const cycles = [];
+const comments = [];
 
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
@@ -512,6 +513,98 @@ app.post("/api/v1/issues/:issueId/transition", requireAuth, authorize("edit_proj
 
 app.get("/api/v1/issues/:issueId/activity", requireAuth, (req, res) => {
   return res.status(200).json(issueActivities.filter((item) => item.issueId === req.params.issueId));
+});
+
+app.get("/api/v1/issues/:issueId/comments", requireAuth, (req, res) => {
+  const issueComments = comments
+    .filter((comment) => comment.issueId === req.params.issueId)
+    .map((comment) =>
+      comment.deletedAt
+        ? { ...comment, body: "This comment was deleted" }
+        : comment,
+    );
+  return res.status(200).json(issueComments);
+});
+
+app.post("/api/v1/issues/:issueId/comments", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const issue = findIssueById(req.params.issueId);
+  if (!issue || issue.deletedAt) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Issue not found",
+      }),
+    );
+  }
+  const body = (req.body && req.body.body) || "";
+  if (!body.trim()) {
+    return next(
+      appError({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "Comment body is required",
+      }),
+    );
+  }
+  const comment = {
+    id: `comment-${comments.length + 1}`,
+    issueId: issue.id,
+    authorId: req.userId,
+    body: body.trim(),
+    editedAt: null,
+    deletedAt: null,
+    createdAt: new Date().toISOString(),
+  };
+  comments.push(comment);
+  return res.status(201).json(comment);
+});
+
+app.patch("/api/v1/comments/:commentId", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const comment = comments.find((item) => item.id === req.params.commentId);
+  if (!comment || comment.deletedAt) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Comment not found",
+      }),
+    );
+  }
+  const body = (req.body && req.body.body) || "";
+  if (!body.trim()) {
+    return next(
+      appError({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "Comment body is required",
+      }),
+    );
+  }
+  comment.body = body.trim();
+  comment.editedAt = new Date().toISOString();
+  return res.status(200).json(comment);
+});
+
+app.delete("/api/v1/comments/:commentId", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const comment = comments.find((item) => item.id === req.params.commentId);
+  if (!comment || comment.deletedAt) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Comment not found",
+      }),
+    );
+  }
+  comment.deletedAt = new Date().toISOString();
+  comment.body = "This comment was deleted";
+  return res.status(204).send();
 });
 
 app.post("/api/v1/cycles/:cycleId/issues/:issueId", requireAuth, authorize("edit_project"), (req, res, next) => {
