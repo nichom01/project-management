@@ -53,6 +53,7 @@ const projects = Array.from({ length: 120 }, (_, i) => ({
   teamId: "team-1",
   name: `Project ${i + 1}`,
 }));
+const organisations = [];
 
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
@@ -130,6 +131,14 @@ function authorize(action) {
     req.effectiveRole = result.effectiveRole;
     return next();
   };
+}
+
+function slugify(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 app.post("/api/v1/auth/login", (req, res) => {
@@ -223,6 +232,30 @@ app.get("/api/v1/error-sample", (req, res, next) => {
       detail: "Requested sample resource was not found",
     }),
   );
+});
+
+app.post("/api/v1/organisations", requireAuth, (req, res, next) => {
+  const name = (req.body && req.body.name) || "";
+  if (!name.trim()) {
+    return next(
+      appError({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "Organisation name is required",
+      }),
+    );
+  }
+
+  const org = {
+    id: `org-${organisations.length + 1}`,
+    name: name.trim(),
+    slug: slugify(name) || `org-${organisations.length + 1}`,
+    createdBy: req.userId,
+  };
+  organisations.push(org);
+  orgMemberships.set(req.userId, { orgRole: "admin", organisationId: org.id });
+  return res.status(201).json(org);
 });
 
 app.use(problemDetailsMiddleware);

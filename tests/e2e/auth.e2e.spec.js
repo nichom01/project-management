@@ -6,6 +6,9 @@ test("happy-path login refresh logout", async ({ page }) => {
   await page.getByRole("button", { name: "Login" }).click();
   await expect(page.locator("#output")).toContainText("\"status\": 200");
 
+  await page.getByRole("button", { name: "Create Organisation" }).click();
+  await expect(page.locator("#org-context")).toContainText("Current org: acme-engineering");
+
   await page.getByRole("button", { name: "Refresh Session" }).click();
   await expect(page.locator("#output")).toContainText("\"status\": 200");
 

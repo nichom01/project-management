@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Auth Baseline</title>
+    <title>Foundations Baseline</title>
   </head>
   <body>
     <main>
-      <h1>Project Management Auth Baseline</h1>
+      <h1>Project Management Foundations</h1>
       <form id="login-form">
         <label>
           Email
@@ -19,8 +19,16 @@
         </label>
         <button type="submit">Login</button>
       </form>
+      <form id="org-form">
+        <label>
+          Organisation Name
+          <input id="org-name" value="Acme Engineering" />
+        </label>
+        <button type="submit">Create Organisation</button>
+      </form>
       <button id="refresh">Refresh Session</button>
       <button id="logout">Logout</button>
+      <p id="org-context">Current org: (none)</p>
       <pre id="output"></pre>
     </main>
     <script src="./main.js"></script>
