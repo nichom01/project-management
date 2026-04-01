@@ -4,6 +4,7 @@ const cookieParser = require("cookie-parser");
 const { assertAllowed } = require("./permission-service");
 const { paginate } = require("./pagination");
 const { createProblem, appError, problemDetailsMiddleware } = require("./problem-details");
+const { createStorageService } = require("./storage-service");
 
 const app = express();
 app.use(express.json());
@@ -74,6 +75,8 @@ const issues = [];
 const issueActivities = [];
 const cycles = [];
 const comments = [];
+const attachments = [];
+const storageService = createStorageService();
 
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
@@ -615,6 +618,65 @@ app.delete("/api/v1/comments/:commentId", requireAuth, authorize("edit_project")
   }
   comment.deletedAt = new Date().toISOString();
   comment.body = "This comment was deleted";
+  return res.status(204).send();
+});
+
+app.get("/api/v1/issues/:issueId/attachments", requireAuth, (req, res) => {
+  return res.status(200).json(attachments.filter((attachment) => attachment.issueId === req.params.issueId));
+});
+
+app.post("/api/v1/issues/:issueId/attachments", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const issue = findIssueById(req.params.issueId);
+  if (!issue || issue.deletedAt) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Issue not found",
+      }),
+    );
+  }
+  const filename = (req.body && req.body.filename) || "";
+  const contentBase64 = (req.body && req.body.contentBase64) || "";
+  if (!filename.trim() || !contentBase64.trim()) {
+    return next(
+      appError({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "filename and contentBase64 are required",
+      }),
+    );
+  }
+  const stored = storageService.upload(filename.trim(), contentBase64.trim());
+  const attachment = {
+    id: `attachment-${attachments.length + 1}`,
+    issueId: issue.id,
+    uploaderId: req.userId,
+    filename: filename.trim(),
+    storageKey: stored.key,
+    fileUrl: stored.url,
+    createdAt: new Date().toISOString(),
+  };
+  attachments.push(attachment);
+  return res.status(201).json(attachment);
+});
+
+app.delete("/api/v1/attachments/:attachmentId", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const index = attachments.findIndex((attachment) => attachment.id === req.params.attachmentId);
+  if (index < 0) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Attachment not found",
+      }),
+    );
+  }
+  storageService.delete(attachments[index].storageKey);
+  attachments.splice(index, 1);
   return res.status(204).send();
 });
 

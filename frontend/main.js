@@ -6,6 +6,7 @@ let currentProjectId = null;
 let currentIssueId = null;
 let currentCycleId = null;
 let currentCommentId = null;
+let currentAttachmentId = null;
 
 function write(data) {
   output.textContent = JSON.stringify(data, null, 2);
@@ -327,6 +328,45 @@ document.getElementById("issue-activity").addEventListener("click", async () => 
     credentials: "include",
   });
   write({ status: res.status, json: await res.json() });
+});
+
+document.getElementById("add-attachment").addEventListener("click", async () => {
+  if (!currentIssueId) {
+    write({ status: 400, json: { detail: "Create issue first" } });
+    return;
+  }
+  const response = await post(`/api/v1/issues/${currentIssueId}/attachments`, {
+    filename: "spec.txt",
+    contentBase64: "ZmlsZSBjb250ZW50cw==",
+  });
+  write(response);
+  if (response.status === 201) {
+    currentAttachmentId = response.json.id;
+  }
+});
+
+document.getElementById("list-attachments").addEventListener("click", async () => {
+  if (!currentIssueId) {
+    write({ status: 400, json: { detail: "Create issue first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/issues/${currentIssueId}/attachments`, {
+    method: "GET",
+    credentials: "include",
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
+document.getElementById("delete-attachment").addEventListener("click", async () => {
+  if (!currentAttachmentId) {
+    write({ status: 400, json: { detail: "Add attachment first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/attachments/${currentAttachmentId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  write({ status: res.status, json: { ok: res.ok } });
 });
 
 document.getElementById("cycle-form").addEventListener("submit", async (event) => {
