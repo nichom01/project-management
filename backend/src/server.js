@@ -71,6 +71,7 @@ const workflowStates = [
 ];
 const workflowSemanticTypes = new Set(["backlog", "unstarted", "started", "completed", "cancelled"]);
 const issues = [];
+const issueActivities = [];
 
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
@@ -357,6 +358,78 @@ app.get("/api/v1/issues/:issueId", requireAuth, (req, res, next) => {
     );
   }
   return res.status(200).json(issue);
+});
+
+app.get("/api/v1/projects/:projectId/issues", requireAuth, (req, res, next) => {
+  const project = findProjectById(req.params.projectId);
+  if (!project) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Project not found",
+      }),
+    );
+  }
+  const view = String(req.query.view || "table");
+  let projectIssues = issues.filter((issue) => issue.projectId === project.id);
+  const status = String(req.query.status || "").trim().toLowerCase();
+  if (status) {
+    projectIssues = projectIssues.filter((issue) => String(issue.status || "").toLowerCase() === status);
+  }
+  const page = paginate(projectIssues, req.query.cursor, req.query.limit);
+  if (view === "board") {
+    const lanes = {};
+    for (const issue of page.data) {
+      lanes[issue.status] = lanes[issue.status] || [];
+      lanes[issue.status].push(issue);
+    }
+    return res.status(200).json({ view: "board", lanes, hasMore: page.hasMore, nextCursor: page.nextCursor });
+  }
+  return res.status(200).json({ view: "table", ...page });
+});
+
+app.post("/api/v1/issues/:issueId/transition", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const issue = findIssueById(req.params.issueId);
+  if (!issue) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Issue not found",
+      }),
+    );
+  }
+  const toStatus = (req.body && req.body.toStatus) || "";
+  if (!toStatus) {
+    return next(
+      appError({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "toStatus is required",
+      }),
+    );
+  }
+  const fromStatus = issue.status;
+  issue.status = toStatus;
+  issue.updatedAt = new Date().toISOString();
+  issueActivities.push({
+    id: `activity-${issueActivities.length + 1}`,
+    issueId: issue.id,
+    actorId: req.userId,
+    type: "status_changed",
+    fromValue: fromStatus,
+    toValue: toStatus,
+    createdAt: new Date().toISOString(),
+  });
+  return res.status(200).json(issue);
+});
+
+app.get("/api/v1/issues/:issueId/activity", requireAuth, (req, res) => {
+  return res.status(200).json(issueActivities.filter((item) => item.issueId === req.params.issueId));
 });
 
 app.delete("/api/v1/issues/:issueId", requireAuth, authorize("delete_project"), (req, res, next) => {

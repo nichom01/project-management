@@ -189,6 +189,39 @@ document.getElementById("load-issue-detail").addEventListener("click", async () 
   write({ status: res.status, json: await res.json() });
 });
 
+document.getElementById("list-issues-table").addEventListener("click", async () => {
+  if (!currentProjectId) {
+    write({ status: 400, json: { detail: "Create project first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/projects/${currentProjectId}/issues?view=table&limit=25`, {
+    method: "GET",
+    credentials: "include",
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
+document.getElementById("list-issues-board").addEventListener("click", async () => {
+  if (!currentProjectId) {
+    write({ status: 400, json: { detail: "Create project first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/projects/${currentProjectId}/issues?view=board&limit=25`, {
+    method: "GET",
+    credentials: "include",
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
+document.getElementById("transition-issue").addEventListener("click", async () => {
+  if (!currentIssueId) {
+    write({ status: 400, json: { detail: "Create issue first" } });
+    return;
+  }
+  const response = await post(`/api/v1/issues/${currentIssueId}/transition`, { toStatus: "completed" });
+  write(response);
+});
+
 document.getElementById("label-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!currentTeamId) {
