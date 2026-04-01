@@ -77,6 +77,7 @@ const cycles = [];
 const comments = [];
 const attachments = [];
 const storageService = createStorageService();
+const notifications = [];
 
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
@@ -166,6 +167,18 @@ function findIssueById(issueId) {
 
 function findCycleById(cycleId) {
   return cycles.find((cycle) => cycle.id === cycleId);
+}
+
+function createNotification({ recipientId, actorId, type, issueId = null }) {
+  notifications.push({
+    id: `notification-${notifications.length + 1}`,
+    recipientId,
+    actorId,
+    issueId,
+    type,
+    readAt: null,
+    createdAt: new Date().toISOString(),
+  });
 }
 
 function authorizeProject(action) {
@@ -357,6 +370,14 @@ app.post("/api/v1/projects/:projectId/issues", requireAuth, authorize("edit_proj
     }
   }
   issues.push(issue);
+  if (issue.assigneeId) {
+    createNotification({
+      recipientId: issue.assigneeId,
+      actorId: req.userId,
+      type: "issue_assigned",
+      issueId: issue.id,
+    });
+  }
   return res.status(201).json(issue);
 });
 
@@ -574,6 +595,42 @@ app.post("/api/v1/issues/:issueId/comments", requireAuth, authorize("edit_projec
   };
   comments.push(comment);
   return res.status(201).json(comment);
+});
+
+app.get("/api/v1/notifications", requireAuth, (req, res) => {
+  const mine = notifications
+    .filter((item) => item.recipientId === req.userId)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  return res.status(200).json({
+    data: mine,
+    unreadCount: mine.filter((item) => !item.readAt).length,
+  });
+});
+
+app.post("/api/v1/notifications/:id/read", requireAuth, (req, res, next) => {
+  const notification = notifications.find((item) => item.id === req.params.id && item.recipientId === req.userId);
+  if (!notification) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Notification not found",
+      }),
+    );
+  }
+  notification.readAt = new Date().toISOString();
+  return res.status(200).json(notification);
+});
+
+app.post("/api/v1/notifications/read-all", requireAuth, (req, res) => {
+  const now = new Date().toISOString();
+  notifications.forEach((item) => {
+    if (item.recipientId === req.userId && !item.readAt) {
+      item.readAt = now;
+    }
+  });
+  return res.status(200).json({ ok: true });
 });
 
 app.patch("/api/v1/comments/:commentId", requireAuth, authorize("edit_project"), (req, res, next) => {

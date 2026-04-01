@@ -81,6 +81,9 @@ test("happy-path login refresh logout", async ({ page }) => {
   await page.getByRole("button", { name: "Delete Attachment" }).click();
   await expect(page.locator("#output")).toContainText("\"status\": 204");
 
+  await page.getByRole("button", { name: "List Notifications" }).click();
+  await expect(page.locator("#output")).toContainText("\"unreadCount\"");
+
   await page.getByRole("button", { name: "Create Cycle" }).click();
   await expect(page.locator("#output")).toContainText("\"status\": 201");
 

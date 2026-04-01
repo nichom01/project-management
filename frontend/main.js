@@ -7,6 +7,7 @@ let currentIssueId = null;
 let currentCycleId = null;
 let currentCommentId = null;
 let currentAttachmentId = null;
+let currentNotificationId = null;
 
 function write(data) {
   output.textContent = JSON.stringify(data, null, 2);
@@ -367,6 +368,30 @@ document.getElementById("delete-attachment").addEventListener("click", async () 
     credentials: "include",
   });
   write({ status: res.status, json: { ok: res.ok } });
+});
+
+document.getElementById("list-notifications").addEventListener("click", async () => {
+  const res = await fetch("/api/v1/notifications", {
+    method: "GET",
+    credentials: "include",
+  });
+  const payload = await res.json();
+  if (payload.data && payload.data.length > 0) {
+    currentNotificationId = payload.data[0].id;
+  }
+  write({ status: res.status, json: payload });
+});
+
+document.getElementById("mark-one-notification").addEventListener("click", async () => {
+  if (!currentNotificationId) {
+    write({ status: 400, json: { detail: "List notifications first" } });
+    return;
+  }
+  write(await post(`/api/v1/notifications/${currentNotificationId}/read`));
+});
+
+document.getElementById("mark-all-notifications").addEventListener("click", async () => {
+  write(await post("/api/v1/notifications/read-all"));
 });
 
 document.getElementById("cycle-form").addEventListener("submit", async (event) => {
