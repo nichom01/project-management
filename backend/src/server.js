@@ -2,6 +2,8 @@ const crypto = require("crypto");
 const express = require("express");
 const cookieParser = require("cookie-parser");
 const { assertAllowed } = require("./permission-service");
+const { paginate } = require("./pagination");
+const { createProblem, appError, problemDetailsMiddleware } = require("./problem-details");
 
 const app = express();
 app.use(express.json());
@@ -46,6 +48,12 @@ const teamMemberships = new Map([
   ["team-1:u-3", { teamRole: "guest" }],
 ]);
 
+const projects = Array.from({ length: 120 }, (_, i) => ({
+  id: `project-${i + 1}`,
+  teamId: "team-1",
+  name: `Project ${i + 1}`,
+}));
+
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
 }
@@ -88,13 +96,15 @@ function requireAuth(req, res, next) {
   const accessToken = req.cookies[accessCookieName];
   const session = accessSessions.get(accessToken);
   if (!accessToken || !session || session.expiresAt <= Date.now()) {
-    return res.status(401).json({
-      type: "https://project-management/errors/auth-required",
-      title: "Authentication required",
-      status: 401,
-      detail: "Login required for this action",
-      instance: req.path,
-    });
+    return res.status(401).json(
+      createProblem({
+        type: "https://project-management/errors/auth-required",
+        title: "Authentication required",
+        status: 401,
+        detail: "Login required for this action",
+        instance: req.path,
+      }),
+    );
   }
   req.userId = session.userId;
   return next();
@@ -107,13 +117,15 @@ function authorize(action) {
     const team = teamMemberships.get(key) || { teamRole: "guest" };
     const result = assertAllowed(action, org.orgRole, team.teamRole);
     if (!result.allowed) {
-      return res.status(403).json({
-        type: "https://project-management/errors/forbidden",
-        title: "Forbidden",
-        status: 403,
-        detail: `Role ${result.effectiveRole} cannot perform ${action}`,
-        instance: req.path,
-      });
+      return res.status(403).json(
+        createProblem({
+          type: "https://project-management/errors/forbidden",
+          title: "Forbidden",
+          status: 403,
+          detail: `Role ${result.effectiveRole} cannot perform ${action}`,
+          instance: req.path,
+        }),
+      );
     }
     req.effectiveRole = result.effectiveRole;
     return next();
@@ -125,13 +137,15 @@ app.post("/api/v1/auth/login", (req, res) => {
   const user = users.find((u) => u.email === email && u.password === password);
 
   if (!user) {
-    return res.status(401).json({
-      type: "https://project-management/errors/auth-invalid",
-      title: "Invalid credentials",
-      status: 401,
-      detail: "Email or password is incorrect",
-      instance: "/api/v1/auth/login",
-    });
+    return res.status(401).json(
+      createProblem({
+        type: "https://project-management/errors/auth-invalid",
+        title: "Invalid credentials",
+        status: 401,
+        detail: "Email or password is incorrect",
+        instance: "/api/v1/auth/login",
+      }),
+    );
   }
 
   setSessionCookies(res, user.id);
@@ -147,13 +161,15 @@ app.post("/api/v1/auth/refresh", (req, res) => {
     if (refreshToken) {
       refreshSessions.delete(refreshToken);
     }
-    return res.status(401).json({
-      type: "https://project-management/errors/auth-refresh-invalid",
-      title: "Refresh token invalid",
-      status: 401,
-      detail: "Session is expired or invalid. Login again.",
-      instance: "/api/v1/auth/refresh",
-    });
+    return res.status(401).json(
+      createProblem({
+        type: "https://project-management/errors/auth-refresh-invalid",
+        title: "Refresh token invalid",
+        status: 401,
+        detail: "Session is expired or invalid. Login again.",
+        instance: "/api/v1/auth/refresh",
+      }),
+    );
   }
 
   refreshSessions.delete(refreshToken);
@@ -191,5 +207,24 @@ app.post("/api/v1/teams/:teamId/projects", requireAuth, authorize("create_projec
 app.delete("/api/v1/teams/:teamId/projects/:projectId", requireAuth, authorize("delete_project"), (req, res) => {
   return res.status(204).send();
 });
+
+app.get("/api/v1/teams/:teamId/projects", requireAuth, (req, res) => {
+  const teamProjects = projects.filter((p) => p.teamId === req.params.teamId);
+  const page = paginate(teamProjects, req.query.cursor, req.query.limit);
+  return res.status(200).json(page);
+});
+
+app.get("/api/v1/error-sample", (req, res, next) => {
+  next(
+    appError({
+      type: "https://project-management/errors/not-found",
+      title: "Resource not found",
+      status: 404,
+      detail: "Requested sample resource was not found",
+    }),
+  );
+});
+
+app.use(problemDetailsMiddleware);
 
 module.exports = { app };
