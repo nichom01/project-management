@@ -100,9 +100,14 @@ const notifications = [];
 const notificationPreferences = [];
 const emailQueue = [];
 const emailOutbox = [];
+const apiKeys = [];
 
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
+}
+
+function hashApiKey(raw) {
+  return crypto.createHash("sha256").update(raw).digest("hex");
 }
 
 function cookieOptions(maxAgeMs) {
@@ -155,6 +160,35 @@ function requireAuth(req, res, next) {
   }
   req.userId = session.userId;
   return next();
+}
+
+function requireAuthOrApiKey(req, res, next) {
+  const accessToken = req.cookies[accessCookieName];
+  const session = accessSessions.get(accessToken);
+  if (accessToken && session && session.expiresAt > Date.now()) {
+    req.userId = session.userId;
+    return next();
+  }
+  const authHeader = req.headers.authorization || "";
+  if (authHeader.startsWith("Bearer ")) {
+    const raw = authHeader.slice("Bearer ".length).trim();
+    const hashed = hashApiKey(raw);
+    const key = apiKeys.find((item) => item.keyHash === hashed && !item.revokedAt);
+    if (key) {
+      req.userId = key.userId;
+      req.authType = "api_key";
+      return next();
+    }
+  }
+  return res.status(401).json(
+    createProblem({
+      type: "https://project-management/errors/auth-required",
+      title: "Authentication required",
+      status: 401,
+      detail: "Valid session or API key required",
+      instance: req.path,
+    }),
+  );
 }
 
 function authorize(action) {
@@ -438,6 +472,10 @@ app.get("/api/v1/health", (req, res) => {
 
 app.get("/api/v1/metrics", requireAuth, (req, res) => {
   return res.status(200).json(metrics);
+});
+
+app.get("/api/v1/auth/whoami", requireAuthOrApiKey, (req, res) => {
+  return res.status(200).json({ userId: req.userId, authType: req.authType || "session" });
 });
 
 app.post("/api/v1/teams/:teamId/projects", requireAuth, authorize("create_project"), (req, res) => {
@@ -785,6 +823,67 @@ app.get("/api/v1/users/me/notification-preferences", requireAuth, (req, res) => 
   return res.status(200).json(
     notificationPreferences.filter((pref) => pref.userId === req.userId),
   );
+});
+
+app.get("/api/v1/users/me/api-keys", requireAuth, (req, res) => {
+  const mine = apiKeys
+    .filter((item) => item.userId === req.userId)
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      lastFour: item.lastFour,
+      revokedAt: item.revokedAt,
+      createdAt: item.createdAt,
+    }));
+  return res.status(200).json(mine);
+});
+
+app.post("/api/v1/users/me/api-keys", requireAuth, (req, res, next) => {
+  const label = (req.body && req.body.label) || "";
+  if (!label.trim()) {
+    return next(
+      appError({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "label is required",
+      }),
+    );
+  }
+  const rawKey = `pmk_${randomToken()}`;
+  const key = {
+    id: `apikey-${apiKeys.length + 1}`,
+    userId: req.userId,
+    label: label.trim(),
+    keyHash: hashApiKey(rawKey),
+    lastFour: rawKey.slice(-4),
+    revokedAt: null,
+    createdAt: new Date().toISOString(),
+  };
+  apiKeys.push(key);
+  return res.status(201).json({
+    id: key.id,
+    label: key.label,
+    key: rawKey,
+    lastFour: key.lastFour,
+    createdAt: key.createdAt,
+  });
+});
+
+app.delete("/api/v1/users/me/api-keys/:keyId", requireAuth, (req, res, next) => {
+  const key = apiKeys.find((item) => item.id === req.params.keyId && item.userId === req.userId);
+  if (!key) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "API key not found",
+      }),
+    );
+  }
+  key.revokedAt = new Date().toISOString();
+  return res.status(204).send();
 });
 
 app.patch("/api/v1/users/me/notification-preferences", requireAuth, (req, res, next) => {
