@@ -54,6 +54,7 @@ const projects = Array.from({ length: 120 }, (_, i) => ({
   name: `Project ${i + 1}`,
 }));
 const organisations = [];
+const teams = [{ id: "team-1", orgId: "org-0", name: "Default Team", identifier: "ENG" }];
 
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
@@ -256,6 +257,56 @@ app.post("/api/v1/organisations", requireAuth, (req, res, next) => {
   organisations.push(org);
   orgMemberships.set(req.userId, { orgRole: "admin", organisationId: org.id });
   return res.status(201).json(org);
+});
+
+app.post("/api/v1/organisations/:orgId/teams", requireAuth, (req, res) => {
+  const org = orgMemberships.get(req.userId) || { orgRole: "member" };
+  const authz = assertAllowed("create_team", org.orgRole, null);
+  if (!authz.allowed) {
+    return res.status(403).json(
+      createProblem({
+        type: "https://project-management/errors/forbidden",
+        title: "Forbidden",
+        status: 403,
+        detail: "Only org admins can create teams",
+        instance: req.path,
+      }),
+    );
+  }
+
+  const name = (req.body && req.body.name) || "New Team";
+  const identifier = (req.body && req.body.identifier) || `TEAM${teams.length + 1}`;
+  const team = {
+    id: `team-${teams.length + 1}`,
+    orgId: req.params.orgId,
+    name,
+    identifier,
+  };
+  teams.push(team);
+  teamMemberships.set(`${team.id}:${req.userId}`, { teamRole: "owner" });
+  return res.status(201).json(team);
+});
+
+app.post("/api/v1/teams/:teamId/members", requireAuth, authorize("manage_team_members"), (req, res, next) => {
+  const userId = req.body && req.body.userId;
+  const role = req.body && req.body.role;
+  if (!userId || !["owner", "member", "guest"].includes(role)) {
+    return next(
+      appError({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "userId and valid role are required",
+      }),
+    );
+  }
+  teamMemberships.set(`${req.params.teamId}:${userId}`, { teamRole: role });
+  return res.status(200).json({ teamId: req.params.teamId, userId, role });
+});
+
+app.delete("/api/v1/teams/:teamId/members/:userId", requireAuth, authorize("manage_team_members"), (req, res) => {
+  teamMemberships.delete(`${req.params.teamId}:${req.params.userId}`);
+  return res.status(204).send();
 });
 
 app.use(problemDetailsMiddleware);

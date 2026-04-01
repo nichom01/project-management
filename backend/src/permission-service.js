@@ -8,6 +8,8 @@ const policyMatrix = {
   create_project: "member",
   edit_project: "member",
   delete_project: "owner",
+  create_team: "owner",
+  manage_team_members: "owner",
 };
 
 function resolveEffectiveRole(orgRole, teamRole) {

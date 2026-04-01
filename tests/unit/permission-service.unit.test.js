@@ -20,6 +20,11 @@ test("policy matrix enforces delete_project as owner-only", () => {
   assert.equal(canPerform("delete_project", "member"), false);
 });
 
+test("policy matrix enforces team management as owner-only", () => {
+  assert.equal(canPerform("manage_team_members", "owner"), true);
+  assert.equal(canPerform("manage_team_members", "member"), false);
+});
+
 test("assertAllowed returns allowed=false for insufficient role", () => {
   const result = assertAllowed("create_project", "member", "guest");
   assert.equal(result.allowed, false);
