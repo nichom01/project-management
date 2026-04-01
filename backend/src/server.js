@@ -322,11 +322,30 @@ app.get("/api/v1/projects/:projectId", requireAuth, (req, res) => {
       }),
     );
   }
+  if (req.query.teamId && project.teamId !== req.query.teamId) {
+    return res.status(404).json(
+      createProblem({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Project not found in this team context",
+        instance: req.path,
+      }),
+    );
+  }
   return res.status(200).json(project);
 });
 
 app.get("/api/v1/teams/:teamId/projects", requireAuth, (req, res) => {
-  const teamProjects = projects.filter((p) => p.teamId === req.params.teamId);
+  let teamProjects = projects.filter((p) => p.teamId === req.params.teamId);
+  const query = String(req.query.q || "").trim().toLowerCase();
+  const status = String(req.query.status || "").trim().toLowerCase();
+  if (query) {
+    teamProjects = teamProjects.filter((project) => project.name.toLowerCase().includes(query));
+  }
+  if (status) {
+    teamProjects = teamProjects.filter((project) => String(project.status || "").toLowerCase() === status);
+  }
   const page = paginate(teamProjects, req.query.cursor, req.query.limit);
   return res.status(200).json(page);
 });

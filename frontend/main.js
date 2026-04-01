@@ -111,6 +111,33 @@ document.getElementById("project-form").addEventListener("submit", async (event)
   }
 });
 
+document.getElementById("project-search-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!currentTeamId) {
+    write({ status: 400, json: { detail: "Create team first" } });
+    return;
+  }
+  const q = encodeURIComponent(document.getElementById("project-search").value);
+  const status = encodeURIComponent(document.getElementById("project-status-filter").value);
+  const res = await fetch(`/api/v1/teams/${currentTeamId}/projects?q=${q}&status=${status}`, {
+    method: "GET",
+    credentials: "include",
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
+document.getElementById("load-project-detail").addEventListener("click", async () => {
+  if (!currentProjectId || !currentTeamId) {
+    write({ status: 400, json: { detail: "Create project first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/projects/${currentProjectId}?teamId=${encodeURIComponent(currentTeamId)}`, {
+    method: "GET",
+    credentials: "include",
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
 document.getElementById("label-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!currentTeamId) {
