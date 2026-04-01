@@ -4,6 +4,7 @@ let currentOrgId = null;
 let currentTeamId = null;
 let currentProjectId = null;
 let currentIssueId = null;
+let currentCycleId = null;
 
 function write(data) {
   output.textContent = JSON.stringify(data, null, 2);
@@ -220,6 +221,40 @@ document.getElementById("transition-issue").addEventListener("click", async () =
   }
   const response = await post(`/api/v1/issues/${currentIssueId}/transition`, { toStatus: "completed" });
   write(response);
+});
+
+document.getElementById("cycle-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!currentProjectId) {
+    write({ status: 400, json: { detail: "Create project first" } });
+    return;
+  }
+  const name = document.getElementById("cycle-name").value;
+  const response = await post(`/api/v1/projects/${currentProjectId}/cycles`, {
+    name,
+    startDate: "2026-04-01",
+    endDate: "2026-04-14",
+  });
+  write(response);
+  if (response.status === 201) {
+    currentCycleId = response.json.id;
+  }
+});
+
+document.getElementById("start-cycle").addEventListener("click", async () => {
+  if (!currentCycleId) {
+    write({ status: 400, json: { detail: "Create cycle first" } });
+    return;
+  }
+  write(await post(`/api/v1/cycles/${currentCycleId}/start`));
+});
+
+document.getElementById("complete-cycle").addEventListener("click", async () => {
+  if (!currentCycleId) {
+    write({ status: 400, json: { detail: "Create cycle first" } });
+    return;
+  }
+  write(await post(`/api/v1/cycles/${currentCycleId}/complete`));
 });
 
 document.getElementById("label-form").addEventListener("submit", async (event) => {

@@ -72,6 +72,7 @@ const workflowStates = [
 const workflowSemanticTypes = new Set(["backlog", "unstarted", "started", "completed", "cancelled"]);
 const issues = [];
 const issueActivities = [];
+const cycles = [];
 
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
@@ -157,6 +158,10 @@ function findProjectById(projectId) {
 
 function findIssueById(issueId) {
   return issues.find((issue) => issue.id === issueId);
+}
+
+function findCycleById(cycleId) {
+  return cycles.find((cycle) => cycle.id === cycleId);
 }
 
 function authorizeProject(action) {
@@ -430,6 +435,148 @@ app.post("/api/v1/issues/:issueId/transition", requireAuth, authorize("edit_proj
 
 app.get("/api/v1/issues/:issueId/activity", requireAuth, (req, res) => {
   return res.status(200).json(issueActivities.filter((item) => item.issueId === req.params.issueId));
+});
+
+app.post("/api/v1/projects/:projectId/cycles", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const project = findProjectById(req.params.projectId);
+  if (!project) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Project not found",
+      }),
+    );
+  }
+  const name = (req.body && req.body.name) || "";
+  if (!name.trim()) {
+    return next(
+      appError({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "Cycle name is required",
+      }),
+    );
+  }
+  const cycle = {
+    id: `cycle-${cycles.length + 1}`,
+    projectId: project.id,
+    name: name.trim(),
+    description: (req.body && req.body.description) || "",
+    status: "draft",
+    startDate: (req.body && req.body.startDate) || null,
+    endDate: (req.body && req.body.endDate) || null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  cycles.push(cycle);
+  return res.status(201).json(cycle);
+});
+
+app.get("/api/v1/projects/:projectId/cycles", requireAuth, (req, res) => {
+  const projectCycles = cycles.filter((cycle) => cycle.projectId === req.params.projectId);
+  const page = paginate(projectCycles, req.query.cursor, req.query.limit);
+  return res.status(200).json(page);
+});
+
+app.patch("/api/v1/cycles/:cycleId", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const cycle = findCycleById(req.params.cycleId);
+  if (!cycle) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Cycle not found",
+      }),
+    );
+  }
+  const fields = ["name", "description", "startDate", "endDate"];
+  for (const field of fields) {
+    if (req.body && Object.prototype.hasOwnProperty.call(req.body, field)) {
+      cycle[field] = req.body[field];
+    }
+  }
+  if (req.body && Object.prototype.hasOwnProperty.call(req.body, "status")) {
+    const nextStatus = req.body.status;
+    if (!["draft", "active", "completed"].includes(nextStatus)) {
+      return next(
+        appError({
+          type: "https://project-management/errors/validation",
+          title: "Validation failed",
+          status: 400,
+          detail: "Invalid cycle status",
+        }),
+      );
+    }
+    if (nextStatus === "active") {
+      const activeExists = cycles.some(
+        (item) => item.projectId === cycle.projectId && item.status === "active" && item.id !== cycle.id,
+      );
+      if (activeExists) {
+        return next(
+          appError({
+            type: "https://project-management/errors/conflict",
+            title: "Conflict",
+            status: 409,
+            detail: "Only one active cycle is allowed per project",
+          }),
+        );
+      }
+    }
+    cycle.status = nextStatus;
+  }
+  cycle.updatedAt = new Date().toISOString();
+  return res.status(200).json(cycle);
+});
+
+app.post("/api/v1/cycles/:cycleId/start", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const cycle = findCycleById(req.params.cycleId);
+  if (!cycle) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Cycle not found",
+      }),
+    );
+  }
+  const activeExists = cycles.some(
+    (item) => item.projectId === cycle.projectId && item.status === "active" && item.id !== cycle.id,
+  );
+  if (activeExists) {
+    return next(
+      appError({
+        type: "https://project-management/errors/conflict",
+        title: "Conflict",
+        status: 409,
+        detail: "Only one active cycle is allowed per project",
+      }),
+    );
+  }
+  cycle.status = "active";
+  cycle.updatedAt = new Date().toISOString();
+  return res.status(200).json(cycle);
+});
+
+app.post("/api/v1/cycles/:cycleId/complete", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const cycle = findCycleById(req.params.cycleId);
+  if (!cycle) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Cycle not found",
+      }),
+    );
+  }
+  cycle.status = "completed";
+  cycle.updatedAt = new Date().toISOString();
+  return res.status(200).json(cycle);
 });
 
 app.delete("/api/v1/issues/:issueId", requireAuth, authorize("delete_project"), (req, res, next) => {
