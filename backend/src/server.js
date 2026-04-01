@@ -63,6 +63,13 @@ const projects = Array.from({ length: 120 }, (_, i) => ({
 }));
 const organisations = [];
 const teams = [{ id: "team-1", orgId: "org-0", name: "Default Team", identifier: "ENG" }];
+const labels = [{ id: "label-1", teamId: "team-1", name: "bug", color: "#ef4444" }];
+const workflowStates = [
+  { id: "state-1", teamId: "team-1", name: "Backlog", type: "backlog", position: 1, color: "#6b7280" },
+  { id: "state-2", teamId: "team-1", name: "In Progress", type: "started", position: 2, color: "#2563eb" },
+  { id: "state-3", teamId: "team-1", name: "Done", type: "completed", position: 3, color: "#16a34a" },
+];
+const workflowSemanticTypes = new Set(["backlog", "unstarted", "started", "completed", "cancelled"]);
 
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
@@ -407,6 +414,156 @@ app.post("/api/v1/teams/:teamId/members", requireAuth, authorize("manage_team_me
 app.delete("/api/v1/teams/:teamId/members/:userId", requireAuth, authorize("manage_team_members"), (req, res) => {
   teamMemberships.delete(`${req.params.teamId}:${req.params.userId}`);
   return res.status(204).send();
+});
+
+app.get("/api/v1/teams/:teamId/labels", requireAuth, (req, res) => {
+  return res.status(200).json(labels.filter((l) => l.teamId === req.params.teamId));
+});
+
+app.post("/api/v1/teams/:teamId/labels", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const name = (req.body && req.body.name) || "";
+  if (!name.trim()) {
+    return next(
+      appError({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "Label name is required",
+      }),
+    );
+  }
+  const label = {
+    id: `label-${labels.length + 1}`,
+    teamId: req.params.teamId,
+    name: name.trim(),
+    color: (req.body && req.body.color) || "#6b7280",
+  };
+  labels.push(label);
+  return res.status(201).json(label);
+});
+
+app.patch("/api/v1/labels/:labelId", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const label = labels.find((item) => item.id === req.params.labelId);
+  if (!label) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Label not found",
+      }),
+    );
+  }
+  if (req.body && Object.prototype.hasOwnProperty.call(req.body, "name")) {
+    label.name = req.body.name;
+  }
+  if (req.body && Object.prototype.hasOwnProperty.call(req.body, "color")) {
+    label.color = req.body.color;
+  }
+  return res.status(200).json(label);
+});
+
+app.get("/api/v1/teams/:teamId/workflow-states", requireAuth, (req, res) => {
+  const states = workflowStates
+    .filter((state) => state.teamId === req.params.teamId)
+    .sort((a, b) => a.position - b.position);
+  return res.status(200).json(states);
+});
+
+app.post("/api/v1/teams/:teamId/workflow-states", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const name = (req.body && req.body.name) || "";
+  const type = (req.body && req.body.type) || "";
+  if (!name.trim() || !workflowSemanticTypes.has(type)) {
+    return next(
+      appError({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "Workflow state requires valid name and semantic type",
+      }),
+    );
+  }
+  const sameTeamStates = workflowStates.filter((state) => state.teamId === req.params.teamId);
+  const state = {
+    id: `state-${workflowStates.length + 1}`,
+    teamId: req.params.teamId,
+    name: name.trim(),
+    type,
+    color: (req.body && req.body.color) || "#6b7280",
+    position: sameTeamStates.length + 1,
+  };
+  workflowStates.push(state);
+  return res.status(201).json(state);
+});
+
+app.patch("/api/v1/workflow-states/:stateId", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const state = workflowStates.find((item) => item.id === req.params.stateId);
+  if (!state) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Workflow state not found",
+      }),
+    );
+  }
+  if (req.body && Object.prototype.hasOwnProperty.call(req.body, "name")) {
+    state.name = req.body.name;
+  }
+  if (req.body && Object.prototype.hasOwnProperty.call(req.body, "color")) {
+    state.color = req.body.color;
+  }
+  if (req.body && Object.prototype.hasOwnProperty.call(req.body, "type")) {
+    if (!workflowSemanticTypes.has(req.body.type)) {
+      return next(
+        appError({
+          type: "https://project-management/errors/validation",
+          title: "Validation failed",
+          status: 400,
+          detail: "Invalid workflow semantic type",
+        }),
+      );
+    }
+    state.type = req.body.type;
+  }
+  return res.status(200).json(state);
+});
+
+app.post("/api/v1/teams/:teamId/workflow-states/reorder", requireAuth, authorize("edit_project"), (req, res, next) => {
+  const orderedIds = (req.body && req.body.orderedIds) || [];
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+    return next(
+      appError({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "orderedIds must be a non-empty array",
+      }),
+    );
+  }
+  const teamStates = workflowStates.filter((state) => state.teamId === req.params.teamId);
+  if (orderedIds.length !== teamStates.length) {
+    return next(
+      appError({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "orderedIds must include all team state IDs",
+      }),
+    );
+  }
+  orderedIds.forEach((id, index) => {
+    const state = workflowStates.find((item) => item.id === id && item.teamId === req.params.teamId);
+    if (state) {
+      state.position = index + 1;
+    }
+  });
+  return res.status(200).json(
+    workflowStates
+      .filter((state) => state.teamId === req.params.teamId)
+      .sort((a, b) => a.position - b.position),
+  );
 });
 
 app.use(problemDetailsMiddleware);

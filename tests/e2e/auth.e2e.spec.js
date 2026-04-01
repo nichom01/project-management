@@ -21,6 +21,15 @@ test("happy-path login refresh logout", async ({ page }) => {
   await page.getByRole("button", { name: "Create Project" }).click();
   await expect(page.locator("#output")).toContainText("\"status\": 201");
 
+  await page.getByRole("button", { name: "Create Label" }).click();
+  await expect(page.locator("#output")).toContainText("\"status\": 201");
+
+  await page.getByRole("button", { name: "Create Workflow State" }).click();
+  await expect(page.locator("#output")).toContainText("\"status\": 201");
+
+  await page.getByRole("button", { name: "Reorder States" }).click();
+  await expect(page.locator("#output")).toContainText("\"status\": 200");
+
   await page.getByRole("button", { name: "Update Project" }).click();
   await expect(page.locator("#output")).toContainText("\"status\": 200");
 

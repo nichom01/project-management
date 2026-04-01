@@ -95,6 +95,41 @@ document.getElementById("project-form").addEventListener("submit", async (event)
   }
 });
 
+document.getElementById("label-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!currentTeamId) {
+    write({ status: 400, json: { detail: "Create team first" } });
+    return;
+  }
+  const name = document.getElementById("label-name").value;
+  write(await post(`/api/v1/teams/${currentTeamId}/labels`, { name, color: "#0ea5e9" }));
+});
+
+document.getElementById("state-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!currentTeamId) {
+    write({ status: 400, json: { detail: "Create team first" } });
+    return;
+  }
+  const name = document.getElementById("state-name").value;
+  const type = document.getElementById("state-type").value;
+  write(await post(`/api/v1/teams/${currentTeamId}/workflow-states`, { name, type, color: "#9333ea" }));
+});
+
+document.getElementById("reorder-states").addEventListener("click", async () => {
+  if (!currentTeamId) {
+    write({ status: 400, json: { detail: "Create team first" } });
+    return;
+  }
+  const listRes = await fetch(`/api/v1/teams/${currentTeamId}/workflow-states`, {
+    method: "GET",
+    credentials: "include",
+  });
+  const list = await listRes.json();
+  const orderedIds = list.map((item) => item.id).reverse();
+  write(await post(`/api/v1/teams/${currentTeamId}/workflow-states/reorder`, { orderedIds }));
+});
+
 document.getElementById("update-project").addEventListener("click", async () => {
   if (!currentProjectId) {
     write({ status: 400, json: { detail: "Create project first" } });
