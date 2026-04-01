@@ -35,12 +35,19 @@ const users = [
     password: "password123",
     name: "Team Guest",
   },
+  {
+    id: "u-4",
+    email: "outsider@example.com",
+    password: "password123",
+    name: "Outsider User",
+  },
 ];
 
 const orgMemberships = new Map([
   ["u-1", { orgRole: "admin" }],
   ["u-2", { orgRole: "member" }],
   ["u-3", { orgRole: "member" }],
+  ["u-4", { orgRole: "member" }],
 ]);
 
 const teamMemberships = new Map([
@@ -156,6 +163,81 @@ function authorize(action) {
       );
     }
     req.effectiveRole = result.effectiveRole;
+    return next();
+  };
+}
+
+function authorizeForTeam(action, teamId, userId) {
+  const org = orgMemberships.get(userId) || { orgRole: "member" };
+  const team = teamMemberships.get(`${teamId}:${userId}`) || { teamRole: "guest" };
+  return assertAllowed(action, org.orgRole, team.teamRole);
+}
+
+function authorizeIssueAction(action) {
+  return (req, res, next) => {
+    const issue = findIssueById(req.params.issueId);
+    if (!issue) {
+      return next(
+        appError({
+          type: "https://project-management/errors/not-found",
+          title: "Resource not found",
+          status: 404,
+          detail: "Issue not found",
+        }),
+      );
+    }
+    const result = authorizeForTeam(action, issue.teamId, req.userId);
+    if (!result.allowed) {
+      return next(
+        appError({
+          type: "https://project-management/errors/forbidden",
+          title: "Forbidden",
+          status: 403,
+          detail: `Role ${result.effectiveRole} cannot perform ${action}`,
+        }),
+      );
+    }
+    req.issue = issue;
+    return next();
+  };
+}
+
+function authorizeCycleAction(action) {
+  return (req, res, next) => {
+    const cycle = findCycleById(req.params.cycleId);
+    if (!cycle) {
+      return next(
+        appError({
+          type: "https://project-management/errors/not-found",
+          title: "Resource not found",
+          status: 404,
+          detail: "Cycle not found",
+        }),
+      );
+    }
+    const project = findProjectById(cycle.projectId);
+    if (!project) {
+      return next(
+        appError({
+          type: "https://project-management/errors/not-found",
+          title: "Resource not found",
+          status: 404,
+          detail: "Project not found",
+        }),
+      );
+    }
+    const result = authorizeForTeam(action, project.teamId, req.userId);
+    if (!result.allowed) {
+      return next(
+        appError({
+          type: "https://project-management/errors/forbidden",
+          title: "Forbidden",
+          status: 403,
+          detail: `Role ${result.effectiveRole} cannot perform ${action}`,
+        }),
+      );
+    }
+    req.cycle = cycle;
     return next();
   };
 }
@@ -430,18 +512,8 @@ app.post("/api/v1/projects/:projectId/issues", requireAuth, authorize("edit_proj
   return res.status(201).json(issue);
 });
 
-app.patch("/api/v1/issues/:issueId", requireAuth, authorize("edit_project"), (req, res, next) => {
-  const issue = findIssueById(req.params.issueId);
-  if (!issue) {
-    return next(
-      appError({
-        type: "https://project-management/errors/not-found",
-        title: "Resource not found",
-        status: 404,
-        detail: "Issue not found",
-      }),
-    );
-  }
+app.patch("/api/v1/issues/:issueId", requireAuth, authorizeIssueAction("edit_project"), (req, res, next) => {
+  const issue = req.issue;
   const fields = ["title", "description", "assigneeId", "priority", "status", "estimate", "dueDate"];
   for (const field of fields) {
     if (req.body && Object.prototype.hasOwnProperty.call(req.body, field)) {
@@ -554,18 +626,8 @@ app.get("/api/v1/projects/:projectId/issues", requireAuth, (req, res, next) => {
   return res.status(200).json({ view: "table", ...page });
 });
 
-app.post("/api/v1/issues/:issueId/transition", requireAuth, authorize("edit_project"), (req, res, next) => {
-  const issue = findIssueById(req.params.issueId);
-  if (!issue) {
-    return next(
-      appError({
-        type: "https://project-management/errors/not-found",
-        title: "Resource not found",
-        status: 404,
-        detail: "Issue not found",
-      }),
-    );
-  }
+app.post("/api/v1/issues/:issueId/transition", requireAuth, authorizeIssueAction("edit_project"), (req, res, next) => {
+  const issue = req.issue;
   const toStatus = (req.body && req.body.toStatus) || "";
   if (!toStatus) {
     return next(
@@ -851,8 +913,8 @@ app.delete("/api/v1/attachments/:attachmentId", requireAuth, authorize("edit_pro
   return res.status(204).send();
 });
 
-app.post("/api/v1/cycles/:cycleId/issues/:issueId", requireAuth, authorize("edit_project"), (req, res, next) => {
-  const cycle = findCycleById(req.params.cycleId);
+app.post("/api/v1/cycles/:cycleId/issues/:issueId", requireAuth, authorizeCycleAction("edit_project"), (req, res, next) => {
+  const cycle = req.cycle;
   const issue = findIssueById(req.params.issueId);
   if (!cycle || !issue) {
     return next(
@@ -879,8 +941,8 @@ app.post("/api/v1/cycles/:cycleId/issues/:issueId", requireAuth, authorize("edit
   return res.status(200).json(issue);
 });
 
-app.delete("/api/v1/cycles/:cycleId/issues/:issueId", requireAuth, authorize("edit_project"), (req, res, next) => {
-  const cycle = findCycleById(req.params.cycleId);
+app.delete("/api/v1/cycles/:cycleId/issues/:issueId", requireAuth, authorizeCycleAction("edit_project"), (req, res, next) => {
+  const cycle = req.cycle;
   const issue = findIssueById(req.params.issueId);
   if (!cycle || !issue) {
     return next(
@@ -983,18 +1045,8 @@ app.get("/api/v1/cycles/:cycleId", requireAuth, (req, res, next) => {
   return res.status(200).json(cycle);
 });
 
-app.patch("/api/v1/cycles/:cycleId", requireAuth, authorize("edit_project"), (req, res, next) => {
-  const cycle = findCycleById(req.params.cycleId);
-  if (!cycle) {
-    return next(
-      appError({
-        type: "https://project-management/errors/not-found",
-        title: "Resource not found",
-        status: 404,
-        detail: "Cycle not found",
-      }),
-    );
-  }
+app.patch("/api/v1/cycles/:cycleId", requireAuth, authorizeCycleAction("edit_project"), (req, res, next) => {
+  const cycle = req.cycle;
   const fields = ["name", "description", "startDate", "endDate"];
   for (const field of fields) {
     if (req.body && Object.prototype.hasOwnProperty.call(req.body, field)) {
@@ -1034,18 +1086,8 @@ app.patch("/api/v1/cycles/:cycleId", requireAuth, authorize("edit_project"), (re
   return res.status(200).json(cycle);
 });
 
-app.post("/api/v1/cycles/:cycleId/start", requireAuth, authorize("edit_project"), (req, res, next) => {
-  const cycle = findCycleById(req.params.cycleId);
-  if (!cycle) {
-    return next(
-      appError({
-        type: "https://project-management/errors/not-found",
-        title: "Resource not found",
-        status: 404,
-        detail: "Cycle not found",
-      }),
-    );
-  }
+app.post("/api/v1/cycles/:cycleId/start", requireAuth, authorizeCycleAction("edit_project"), (req, res, next) => {
+  const cycle = req.cycle;
   const activeExists = cycles.some(
     (item) => item.projectId === cycle.projectId && item.status === "active" && item.id !== cycle.id,
   );
@@ -1064,18 +1106,8 @@ app.post("/api/v1/cycles/:cycleId/start", requireAuth, authorize("edit_project")
   return res.status(200).json(cycle);
 });
 
-app.post("/api/v1/cycles/:cycleId/complete", requireAuth, authorize("edit_project"), (req, res, next) => {
-  const cycle = findCycleById(req.params.cycleId);
-  if (!cycle) {
-    return next(
-      appError({
-        type: "https://project-management/errors/not-found",
-        title: "Resource not found",
-        status: 404,
-        detail: "Cycle not found",
-      }),
-    );
-  }
+app.post("/api/v1/cycles/:cycleId/complete", requireAuth, authorizeCycleAction("edit_project"), (req, res, next) => {
+  const cycle = req.cycle;
   const scopedIssues = issues.filter((issue) => issue.cycleId === cycle.id && !issue.deletedAt);
   const completed = scopedIssues.filter((issue) => issue.status === "completed").length;
   cycle.velocitySnapshot = {
@@ -1089,35 +1121,15 @@ app.post("/api/v1/cycles/:cycleId/complete", requireAuth, authorize("edit_projec
   return res.status(200).json(cycle);
 });
 
-app.delete("/api/v1/issues/:issueId", requireAuth, authorize("delete_project"), (req, res, next) => {
-  const issue = findIssueById(req.params.issueId);
-  if (!issue) {
-    return next(
-      appError({
-        type: "https://project-management/errors/not-found",
-        title: "Resource not found",
-        status: 404,
-        detail: "Issue not found",
-      }),
-    );
-  }
+app.delete("/api/v1/issues/:issueId", requireAuth, authorizeIssueAction("delete_project"), (req, res, next) => {
+  const issue = req.issue;
   issue.deletedAt = new Date().toISOString();
   issue.updatedAt = new Date().toISOString();
   return res.status(204).send();
 });
 
-app.post("/api/v1/issues/:issueId/restore", requireAuth, authorize("delete_project"), (req, res, next) => {
-  const issue = findIssueById(req.params.issueId);
-  if (!issue) {
-    return next(
-      appError({
-        type: "https://project-management/errors/not-found",
-        title: "Resource not found",
-        status: 404,
-        detail: "Issue not found",
-      }),
-    );
-  }
+app.post("/api/v1/issues/:issueId/restore", requireAuth, authorizeIssueAction("delete_project"), (req, res, next) => {
+  const issue = req.issue;
   issue.deletedAt = null;
   issue.updatedAt = new Date().toISOString();
   return res.status(200).json(issue);
