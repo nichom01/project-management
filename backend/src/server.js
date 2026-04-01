@@ -78,6 +78,7 @@ const comments = [];
 const attachments = [];
 const storageService = createStorageService();
 const notifications = [];
+const notificationPreferences = [];
 
 function randomToken() {
   return crypto.randomBytes(24).toString("hex");
@@ -170,6 +171,12 @@ function findCycleById(cycleId) {
 }
 
 function createNotification({ recipientId, actorId, type, issueId = null }) {
+  const inAppPref = notificationPreferences.find(
+    (pref) => pref.userId === recipientId && pref.eventType === type && pref.channel === "in_app",
+  );
+  if (inAppPref && inAppPref.enabled === false) {
+    return;
+  }
   notifications.push({
     id: `notification-${notifications.length + 1}`,
     recipientId,
@@ -631,6 +638,58 @@ app.post("/api/v1/notifications/read-all", requireAuth, (req, res) => {
     }
   });
   return res.status(200).json({ ok: true });
+});
+
+app.get("/api/v1/users/me/notification-preferences", requireAuth, (req, res) => {
+  return res.status(200).json(
+    notificationPreferences.filter((pref) => pref.userId === req.userId),
+  );
+});
+
+app.patch("/api/v1/users/me/notification-preferences", requireAuth, (req, res, next) => {
+  const preferences = (req.body && req.body.preferences) || [];
+  if (!Array.isArray(preferences)) {
+    return next(
+      appError({
+        type: "https://project-management/errors/validation",
+        title: "Validation failed",
+        status: 400,
+        detail: "preferences array is required",
+      }),
+    );
+  }
+  for (const pref of preferences) {
+    const { eventType, channel, enabled } = pref || {};
+    if (!eventType || !["in_app", "email"].includes(channel) || typeof enabled !== "boolean") {
+      return next(
+        appError({
+          type: "https://project-management/errors/validation",
+          title: "Validation failed",
+          status: 400,
+          detail: "Each preference requires eventType, channel, and boolean enabled",
+        }),
+      );
+    }
+    const existing = notificationPreferences.find(
+      (item) => item.userId === req.userId && item.eventType === eventType && item.channel === channel,
+    );
+    if (existing) {
+      existing.enabled = enabled;
+      existing.updatedAt = new Date().toISOString();
+    } else {
+      notificationPreferences.push({
+        id: `pref-${notificationPreferences.length + 1}`,
+        userId: req.userId,
+        eventType,
+        channel,
+        enabled,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }
+  return res.status(200).json(
+    notificationPreferences.filter((pref) => pref.userId === req.userId),
+  );
 });
 
 app.patch("/api/v1/comments/:commentId", requireAuth, authorize("edit_project"), (req, res, next) => {

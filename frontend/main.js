@@ -394,6 +394,28 @@ document.getElementById("mark-all-notifications").addEventListener("click", asyn
   write(await post("/api/v1/notifications/read-all"));
 });
 
+document.getElementById("set-notification-pref").addEventListener("click", async () => {
+  const res = await fetch("/api/v1/users/me/notification-preferences", {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      preferences: [
+        { eventType: "issue_assigned", channel: "in_app", enabled: false },
+      ],
+    }),
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
+document.getElementById("list-notification-prefs").addEventListener("click", async () => {
+  const res = await fetch("/api/v1/users/me/notification-preferences", {
+    method: "GET",
+    credentials: "include",
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
 document.getElementById("cycle-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!currentProjectId) {
