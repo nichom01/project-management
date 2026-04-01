@@ -619,6 +619,7 @@ app.post("/api/v1/projects/:projectId/cycles", requireAuth, authorize("edit_proj
     endDate: (req.body && req.body.endDate) || null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    velocitySnapshot: null,
   };
   cycles.push(cycle);
   return res.status(201).json(cycle);
@@ -628,6 +629,21 @@ app.get("/api/v1/projects/:projectId/cycles", requireAuth, (req, res) => {
   const projectCycles = cycles.filter((cycle) => cycle.projectId === req.params.projectId);
   const page = paginate(projectCycles, req.query.cursor, req.query.limit);
   return res.status(200).json(page);
+});
+
+app.get("/api/v1/cycles/:cycleId", requireAuth, (req, res, next) => {
+  const cycle = findCycleById(req.params.cycleId);
+  if (!cycle) {
+    return next(
+      appError({
+        type: "https://project-management/errors/not-found",
+        title: "Resource not found",
+        status: 404,
+        detail: "Cycle not found",
+      }),
+    );
+  }
+  return res.status(200).json(cycle);
 });
 
 app.patch("/api/v1/cycles/:cycleId", requireAuth, authorize("edit_project"), (req, res, next) => {
@@ -723,6 +739,14 @@ app.post("/api/v1/cycles/:cycleId/complete", requireAuth, authorize("edit_projec
       }),
     );
   }
+  const scopedIssues = issues.filter((issue) => issue.cycleId === cycle.id && !issue.deletedAt);
+  const completed = scopedIssues.filter((issue) => issue.status === "completed").length;
+  cycle.velocitySnapshot = {
+    totalIssues: scopedIssues.length,
+    completedIssues: completed,
+    completionRate: scopedIssues.length === 0 ? 0 : Number((completed / scopedIssues.length).toFixed(2)),
+    capturedAt: new Date().toISOString(),
+  };
   cycle.status = "completed";
   cycle.updatedAt = new Date().toISOString();
   return res.status(200).json(cycle);

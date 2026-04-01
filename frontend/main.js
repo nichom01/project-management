@@ -336,6 +336,18 @@ document.getElementById("cycle-progress").addEventListener("click", async () => 
   write({ status: res.status, json: await res.json() });
 });
 
+document.getElementById("cycle-detail").addEventListener("click", async () => {
+  if (!currentCycleId) {
+    write({ status: 400, json: { detail: "Create cycle first" } });
+    return;
+  }
+  const res = await fetch(`/api/v1/cycles/${currentCycleId}`, {
+    method: "GET",
+    credentials: "include",
+  });
+  write({ status: res.status, json: await res.json() });
+});
+
 document.getElementById("label-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!currentTeamId) {
